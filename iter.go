@@ -87,6 +87,7 @@ var findOverlappingIterPool = sync.Pool{
 // For Leftmost* semantics it behaves identically to FindIter.
 type FindOverlappingIter struct {
 	ac         *AhoCorasick
+	nfa        *NFA    // cached NFA pointer; nil when using DFA
 	haystack   []byte
 	pos        int     // current byte position in haystack
 	state      stateID // current automaton state
@@ -98,6 +99,7 @@ type FindOverlappingIter struct {
 func newFindOverlappingIter(ac *AhoCorasick, haystack []byte) *FindOverlappingIter {
 	it := findOverlappingIterPool.Get().(*FindOverlappingIter)
 	it.ac = ac
+	it.nfa, _ = ac.imp.(*NFA) // cache type assertion; nil if DFA
 	it.haystack = haystack
 	it.pos = 0
 	it.state = startStateID
@@ -112,28 +114,39 @@ func (it *FindOverlappingIter) Next() (Match, bool) {
 	if it.done {
 		return Match{}, false
 	}
-
-	// Fast path: dispatch directly to NFA to avoid interface overhead.
-	if nfa, ok := it.ac.imp.(*NFA); ok {
-		return it.nextNFA(nfa)
+	if it.nfa != nil {
+		return it.nextNFA()
 	}
 	return it.nextGeneric()
 }
 
 // nextNFA is the specialized hot path for NFA overlapping iteration.
-// It avoids interface dispatch and accesses NFA fields directly.
-func (it *FindOverlappingIter) nextNFA(nfa *NFA) (Match, bool) {
+// All NFA field accesses and the nextState/lookup logic are fully inlined
+// to eliminate function-call overhead and allow the compiler to keep
+// slice headers and hot variables in registers.
+func (it *FindOverlappingIter) nextNFA() (Match, bool) {
+	nfa := it.nfa
 	hay := it.haystack
 	patLens := it.ac.patLens
 
+	// Cache NFA slice fields as locals so the compiler can register-allocate them.
+	states := nfa.states
+	transBuf := nfa.transBuf
+	transBase := nfa.transBase
+	transLen := nfa.transLen
+	startTrans := &nfa.startTrans
+	outputs := nfa.outputs
+	outLen := nfa.outLen
+	useAlpha := nfa.useAlpha
+
 	// Drain remaining matches from the current state.
 	if it.matchIdx > 0 {
-		st := &nfa.states[it.state]
+		st := &states[it.state]
 		if st.outputIdx >= 0 {
-			base := int32(st.outputIdx)
-			length := nfa.outLen[it.state]
-			if int32(it.matchIdx) < length {
-				pid := nfa.outputs[base+int32(it.matchIdx)]
+			obase := int32(st.outputIdx)
+			olen := outLen[it.state]
+			if int32(it.matchIdx) < olen {
+				pid := outputs[obase+int32(it.matchIdx)]
 				m := Match{
 					id:    pid,
 					start: it.pos - int(patLens[pid]),
@@ -149,15 +162,60 @@ func (it *FindOverlappingIter) nextNFA(nfa *NFA) (Match, bool) {
 	pos := it.pos
 	state := it.state
 	n := len(hay)
+	if pos >= n {
+		it.done = true
+		return Match{}, false
+	}
+
+	// BCE hint: tells the compiler hay[n-1] is in bounds.
+	_ = hay[n-1]
 
 	for pos < n {
 		b := hay[pos]
 		pos++
-		state = nfa.nextState(state, b)
 
-		if nfa.states[state].outputIdx >= 0 {
-			base := int32(nfa.states[state].outputIdx)
-			pid := nfa.outputs[base]
+		// ---- inlined nextState(state, b) ----
+		if useAlpha {
+			b = nfa.alphabet[b]
+		}
+
+		if state == startStateID {
+			state = startTrans[b]
+		} else {
+			for {
+				if state == deadStateID {
+					break
+				}
+				// Inlined lookup: binary search in flattened transition buffer.
+				tbase := int(transBase[state])
+				tlen := int(transLen[state])
+				tr := transBuf[tbase : tbase+tlen]
+				lo, hi := 0, tlen
+				for lo < hi {
+					mid := int(uint(lo+hi) >> 1)
+					if tr[mid].b < b {
+						lo = mid + 1
+					} else {
+						hi = mid
+					}
+				}
+				if lo < tlen && tr[lo].b == b {
+					state = tr[lo].next
+					break
+				}
+				// Failure link: if it points to start, use dense table.
+				if states[state].fail == startStateID {
+					state = startTrans[b]
+					break
+				}
+				state = states[state].fail
+			}
+		}
+		// ---- end inlined nextState ----
+
+		if states[state].outputIdx >= 0 {
+			obase := int32(states[state].outputIdx)
+			pid := outputs[obase]
 			m := Match{
 				id:    pid,
 				start: pos - int(patLens[pid]),
@@ -222,6 +280,7 @@ func (it *FindOverlappingIter) nextGeneric() (Match, bool) {
 // Close returns the iterator to the pool.
 func (it *FindOverlappingIter) Close() {
 	it.ac = nil
+	it.nfa = nil
 	it.haystack = nil
 	findOverlappingIterPool.Put(it)
 }
