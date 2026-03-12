@@ -29,20 +29,25 @@ type nfaState struct {
 // NFA is an Aho-Corasick Non-deterministic Finite Automaton.
 //
 // Memory layout
-//   - states  : flat []nfaState  — O(S) where S = number of states
-//   - trans   : [][]nfaTrans     — sparse; sorted per state for binary search
-//   - outputs : flat []PatternID — all output pattern lists concatenated
-//   - outBase : []int32          — per-state start index into outputs; length = outputs[i]
+//   - states    : flat []nfaState  — O(S) where S = number of states
+//   - transBuf  : flat []nfaTrans  — all transitions concatenated for cache locality
+//   - transBase : []int32          — per-state offset into transBuf
+//   - transLen  : []int32          — per-state transition count
+//   - outputs   : flat []PatternID — all output pattern lists concatenated
+//   - outLen    : []int32          — per-state output count
+//   - startTrans: [256]stateID     — precomputed dense table for start state (O(1) lookup)
 //
-// This "outputs-flat" layout avoids a pointer per match state and keeps
-// the output lists contiguous in memory.
+// This layout keeps all hot data contiguous in memory for optimal
+// cache utilisation during search.
 type NFA struct {
-	states    []nfaState
-	trans     [][]nfaTrans
-	outputs   []PatternID // all output pattern IDs, concatenated
-	outBase   []int32     // outBase[stateID] = start in outputs; outLen[stateID] = count
-	outLen    []int32     // outLen[stateID] = number of outputs for that state
-	matchKind MatchKind
+	states     []nfaState
+	transBuf   []nfaTrans // all transitions concatenated
+	transBase  []int32    // transBase[stateID] = start index in transBuf
+	transLen   []int32    // transLen[stateID] = number of transitions
+	outputs    []PatternID // all output pattern IDs, concatenated
+	outLen     []int32     // outLen[stateID] = number of outputs for that state
+	startTrans [256]stateID // precomputed transitions from start state
+	matchKind  MatchKind
 	// alphabet maps raw bytes to (possibly normalised) bytes.
 	// Used for ASCII case-insensitive matching.
 	alphabet [256]byte
@@ -69,7 +74,7 @@ func (n *NFA) matches(s stateID) []PatternID {
 	if st.outputIdx < 0 {
 		return nil
 	}
-	base := st.outputIdx
+	base := int32(st.outputIdx)
 	length := n.outLen[s]
 	return n.outputs[base : base+length]
 }
@@ -82,6 +87,10 @@ func (n *NFA) nextState(s stateID, b byte) stateID {
 	if n.useAlpha {
 		b = n.alphabet[b]
 	}
+	// Fast path: start state uses precomputed dense table.
+	if s == startStateID {
+		return n.startTrans[b]
+	}
 	for {
 		// Dead state is a sink — stays dead.
 		if s == deadStateID {
@@ -90,19 +99,23 @@ func (n *NFA) nextState(s stateID, b byte) stateID {
 		if next, ok := n.lookup(s, b); ok {
 			return next
 		}
-		if s == startStateID {
-			return startStateID
+		// Failure link reached start → use dense table.
+		if n.states[s].fail == startStateID {
+			return n.startTrans[b]
 		}
 		s = n.states[s].fail
 	}
 }
 
-// lookup performs a binary search for byte b in the transition list of state s.
+// lookup performs a binary search for byte b in the flattened transition
+// buffer of state s.
 //
 //go:nosplit
 func (n *NFA) lookup(s stateID, b byte) (stateID, bool) {
-	tr := n.trans[s]
-	lo, hi := 0, len(tr)
+	base := int(n.transBase[s])
+	length := int(n.transLen[s])
+	tr := n.transBuf[base : base+length]
+	lo, hi := 0, length
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)
 		if tr[mid].b < b {
@@ -111,7 +124,7 @@ func (n *NFA) lookup(s stateID, b byte) (stateID, bool) {
 			hi = mid
 		}
 	}
-	if lo < len(tr) && tr[lo].b == b {
+	if lo < length && tr[lo].b == b {
 		return tr[lo].next, true
 	}
 	return 0, false
@@ -130,10 +143,13 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 		useAlpha:  useAlpha,
 	}
 
+	// During build we use a temporary [][]nfaTrans per state,
+	// then flatten into contiguous transBuf at the end.
+	tmpTrans := make([][]nfaTrans, 2)
+
 	// ---- Phase 1: build trie (goto function) ----
 	// Reserve state 0 (dead) and state 1 (start).
 	n.states = make([]nfaState, 2)
-	n.trans = make([][]nfaTrans, 2)
 	n.states[0].outputIdx = -1
 	n.states[1].outputIdx = -1
 
@@ -152,7 +168,7 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 			if useAlpha {
 				b = alphabet[b]
 			}
-			next, ok := n.lookup(cur, b)
+			next, ok := lookupTmp(tmpTrans[cur], b)
 			if !ok {
 				// Allocate a new state.
 				newID := stateID(len(n.states))
@@ -160,9 +176,9 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 					outputIdx: -1,
 					depth:     uint16(depth + 1),
 				})
-				n.trans = append(n.trans, nil)
+				tmpTrans = append(tmpTrans, nil)
 				tmpOutputs = append(tmpOutputs, nil)
-				n.addTrans(cur, b, newID)
+				tmpTrans[cur] = addTransTmp(tmpTrans[cur], b, newID)
 				next = newID
 			}
 			cur = next
@@ -175,7 +191,7 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 	queue := make([]stateID, 0, len(n.states))
 
 	// Initialise depth-1 states: their failure link is start.
-	for _, tr := range n.trans[startStateID] {
+	for _, tr := range tmpTrans[startStateID] {
 		child := tr.next
 		n.states[child].fail = startStateID
 		queue = append(queue, child)
@@ -189,7 +205,7 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 		cur := queue[0]
 		queue = queue[1:]
 
-		for _, tr := range n.trans[cur] {
+		for _, tr := range tmpTrans[cur] {
 			b := tr.b
 			child := tr.next
 
@@ -197,12 +213,12 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 			// has a transition on b.
 			fail := n.states[cur].fail
 			for fail != startStateID {
-				if _, ok := n.lookup(fail, b); ok {
+				if _, ok := lookupTmp(tmpTrans[fail], b); ok {
 					break
 				}
 				fail = n.states[fail].fail
 			}
-			if next, ok := n.lookup(fail, b); ok && next != child {
+			if next, ok := lookupTmp(tmpTrans[fail], b); ok && next != child {
 				n.states[child].fail = next
 			} else {
 				n.states[child].fail = startStateID
@@ -223,19 +239,40 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 	// transitions so that the search stops extending once a match is
 	// found and we've passed any possible longer/earlier match.
 	if mk == MatchKindLeftmostFirst || mk == MatchKindLeftmostLongest {
-		n.addDeadTransitions(tmpOutputs)
+		addDeadTransitions(n.states, tmpTrans, tmpOutputs)
 	}
 
-	// ---- Phase 4: flatten output table ----
+	// ---- Phase 4: flatten transitions into contiguous buffer ----
+	n.flattenTransitions(tmpTrans)
+
+	// ---- Phase 5: precompute start state dense transition table ----
+	n.buildStartTrans()
+
+	// ---- Phase 6: flatten output table ----
 	n.flattenOutputs(tmpOutputs)
 
 	return n
 }
 
-// addTrans inserts (b → next) into the sorted transition list of state s.
-func (n *NFA) addTrans(s stateID, b byte, next stateID) {
-	tr := n.trans[s]
-	// Binary search for insertion point.
+// lookupTmp performs a binary search for byte b in a temporary transition slice.
+func lookupTmp(tr []nfaTrans, b byte) (stateID, bool) {
+	lo, hi := 0, len(tr)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if tr[mid].b < b {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo < len(tr) && tr[lo].b == b {
+		return tr[lo].next, true
+	}
+	return 0, false
+}
+
+// addTransTmp inserts (b → next) into a sorted transition slice and returns it.
+func addTransTmp(tr []nfaTrans, b byte, next stateID) []nfaTrans {
 	lo, hi := 0, len(tr)
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)
@@ -248,46 +285,67 @@ func (n *NFA) addTrans(s stateID, b byte, next stateID) {
 	tr = append(tr, nfaTrans{})
 	copy(tr[lo+1:], tr[lo:])
 	tr[lo] = nfaTrans{b: b, next: next}
-	n.trans[s] = tr
+	return tr
 }
 
 // addDeadTransitions modifies the trie so that states which are
 // "in the middle" of matching a longer pattern don't report a shorter
 // sub-match prematurely (LeftmostFirst) or continue past a finished
 // match (LeftmostLongest).
-//
-// Strategy: for every state that has an output AND is not a dead state,
-// replace transitions that lead away from the match with dead-state
-// transitions.  This causes the search loop to terminate cleanly.
-func (n *NFA) addDeadTransitions(tmpOutputs [][]PatternID) {
-	// Walk all states; if a state has outputs, redirect all transitions
-	// from its failure path that would cause a "shorter match" to the dead state.
-	// A simpler, correct approach: once we enter a match state, any transition
-	// that doesn't continue toward a longer match should go to dead.
-	//
-	// We implement this by computing, for each state with output,
-	// whether there exist byte extensions that lead to longer matches.
-	// Bytes that don't lead to longer matches get dead-state transitions.
-	for s := stateID(1); int(s) < len(n.states); s++ {
+func addDeadTransitions(states []nfaState, tmpTrans [][]nfaTrans, tmpOutputs [][]PatternID) {
+	for s := stateID(1); int(s) < len(states); s++ {
 		if len(tmpOutputs[s]) == 0 {
 			continue
 		}
-		// For every byte 0-255 not already in n.trans[s], if following failure
-		// links from s doesn't lead to a longer match state, add a dead transition.
-		present := make(map[byte]bool, len(n.trans[s]))
-		for _, tr := range n.trans[s] {
+		present := make(map[byte]bool, len(tmpTrans[s]))
+		for _, tr := range tmpTrans[s] {
 			present[tr.b] = true
 		}
 		for b := 0; b < 256; b++ {
 			if present[byte(b)] {
 				continue
 			}
-			// Does the failure chain from s on byte b eventually reach
-			// another match state (longer match)?  For leftmost semantics,
-			// if not, we want to terminate here.
-			// Simple conservative approach: add dead transition for all
-			// undefined bytes at a match state.
-			n.addTrans(s, byte(b), deadStateID)
+			tmpTrans[s] = addTransTmp(tmpTrans[s], byte(b), deadStateID)
+		}
+	}
+}
+
+// flattenTransitions packs all per-state transition slices into a single
+// contiguous buffer for better cache locality during search.
+func (n *NFA) flattenTransitions(tmpTrans [][]nfaTrans) {
+	numStates := len(n.states)
+	n.transBase = make([]int32, numStates)
+	n.transLen = make([]int32, numStates)
+
+	total := 0
+	for _, tr := range tmpTrans {
+		total += len(tr)
+	}
+	n.transBuf = make([]nfaTrans, 0, total)
+
+	for s := 0; s < numStates; s++ {
+		tr := tmpTrans[s]
+		n.transBase[s] = int32(len(n.transBuf))
+		n.transLen[s] = int32(len(tr))
+		n.transBuf = append(n.transBuf, tr...)
+	}
+}
+
+// buildStartTrans precomputes the dense 256-entry transition table for the
+// start state. This eliminates binary search and failure-link traversal for
+// the most frequently visited state.
+func (n *NFA) buildStartTrans() {
+	// For each byte, compute what nextState(startStateID, b) would return.
+	// Start state: if there's a direct transition, use it; otherwise stay at start.
+	for b := 0; b < 256; b++ {
+		bb := byte(b)
+		if n.useAlpha {
+			bb = n.alphabet[bb]
+		}
+		if next, ok := n.lookup(startStateID, bb); ok {
+			n.startTrans[b] = next
+		} else {
+			n.startTrans[b] = startStateID
 		}
 	}
 }
@@ -295,7 +353,6 @@ func (n *NFA) addDeadTransitions(tmpOutputs [][]PatternID) {
 // flattenOutputs converts the per-state slice-of-slices into flat arrays.
 func (n *NFA) flattenOutputs(tmp [][]PatternID) {
 	numStates := len(n.states)
-	n.outBase = make([]int32, numStates)
 	n.outLen = make([]int32, numStates)
 
 	// Count total outputs.
@@ -314,7 +371,6 @@ func (n *NFA) flattenOutputs(tmp [][]PatternID) {
 		// Sort for determinism (LeftmostFirst expects lowest PatternID first).
 		sort.Slice(outs, func(i, j int) bool { return outs[i] < outs[j] })
 		n.states[s].outputIdx = int32(len(n.outputs))
-		n.outBase[s] = int32(len(n.outputs))
 		n.outLen[s] = int32(len(outs))
 		n.outputs = append(n.outputs, outs...)
 	}

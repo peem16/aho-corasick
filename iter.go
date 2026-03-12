@@ -113,6 +113,71 @@ func (it *FindOverlappingIter) Next() (Match, bool) {
 		return Match{}, false
 	}
 
+	// Fast path: dispatch directly to NFA to avoid interface overhead.
+	if nfa, ok := it.ac.imp.(*NFA); ok {
+		return it.nextNFA(nfa)
+	}
+	return it.nextGeneric()
+}
+
+// nextNFA is the specialized hot path for NFA overlapping iteration.
+// It avoids interface dispatch and accesses NFA fields directly.
+func (it *FindOverlappingIter) nextNFA(nfa *NFA) (Match, bool) {
+	hay := it.haystack
+	patLens := it.ac.patLens
+
+	// Drain remaining matches from the current state.
+	if it.matchIdx > 0 {
+		st := &nfa.states[it.state]
+		if st.outputIdx >= 0 {
+			base := int32(st.outputIdx)
+			length := nfa.outLen[it.state]
+			if int32(it.matchIdx) < length {
+				pid := nfa.outputs[base+int32(it.matchIdx)]
+				m := Match{
+					id:    pid,
+					start: it.pos - int(patLens[pid]),
+					end:   it.pos,
+				}
+				it.matchIdx++
+				return m, true
+			}
+		}
+		it.matchIdx = 0
+	}
+
+	pos := it.pos
+	state := it.state
+	n := len(hay)
+
+	for pos < n {
+		b := hay[pos]
+		pos++
+		state = nfa.nextState(state, b)
+
+		if nfa.states[state].outputIdx >= 0 {
+			base := int32(nfa.states[state].outputIdx)
+			pid := nfa.outputs[base]
+			m := Match{
+				id:    pid,
+				start: pos - int(patLens[pid]),
+				end:   pos,
+			}
+			it.pos = pos
+			it.state = state
+			it.matchIdx = 1
+			return m, true
+		}
+	}
+
+	it.pos = pos
+	it.state = state
+	it.done = true
+	return Match{}, false
+}
+
+// nextGeneric is the fallback path using the automaton interface.
+func (it *FindOverlappingIter) nextGeneric() (Match, bool) {
 	imp := it.ac.imp
 	hay := it.haystack
 
@@ -162,6 +227,7 @@ func (it *FindOverlappingIter) Close() {
 }
 
 // patternLen returns the byte length of pattern pid in ac.
+// Uses the cached int32 array to avoid slice header indirection.
 func patternLen(ac *AhoCorasick, pid PatternID) int {
-	return len(ac.patterns[pid])
+	return int(ac.patLens[pid])
 }

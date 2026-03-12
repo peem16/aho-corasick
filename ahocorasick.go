@@ -9,6 +9,7 @@ type AhoCorasick struct {
 	matchKind MatchKind
 	kind      AhoCorasickKind
 	patterns  [][]byte // deep copy of original patterns
+	patLens   []int32  // cached pattern lengths for hot-path access
 	patCount  int
 }
 
@@ -103,7 +104,7 @@ func (ac *AhoCorasick) findStandard(haystack []byte, pos int, state stateID) (Ma
 	if imp.isMatch(state) {
 		ms := imp.matches(state)
 		pid := ms[0]
-		patLen := len(ac.patterns[pid])
+		patLen := int(ac.patLens[pid])
 		start := pos - patLen
 		if start < 0 {
 			start = 0
@@ -135,7 +136,7 @@ func (ac *AhoCorasick) findStandard(haystack []byte, pos int, state stateID) (Ma
 		if imp.isMatch(state) {
 			ms := imp.matches(state)
 			pid := ms[0]
-			patLen := len(ac.patterns[pid])
+			patLen := int(ac.patLens[pid])
 			return Match{id: pid, start: pos - patLen, end: pos}, true
 		}
 	}
@@ -190,7 +191,7 @@ func (ac *AhoCorasick) findLeftmostFirst(haystack []byte, pos int) (Match, bool)
 		if imp.isMatch(state) {
 			ms := imp.matches(state)
 			pid := ms[0] // lowest PatternID = LeftmostFirst
-			patLen := len(ac.patterns[pid])
+			patLen := int(ac.patLens[pid])
 			start := pos - patLen
 			if !hasBest || start < best.start || (start == best.start && pid < best.id) {
 				best = Match{id: pid, start: start, end: pos}
@@ -222,9 +223,9 @@ func (ac *AhoCorasick) findLeftmostLongest(haystack []byte, pos int) (Match, boo
 			ms := imp.matches(startStateID)
 			// Pick longest pattern at start state.
 			best := ms[0]
-			bestLen := len(ac.patterns[best])
+			bestLen := int(ac.patLens[best])
 			for _, pid := range ms[1:] {
-				if l := len(ac.patterns[pid]); l > bestLen {
+				if l := int(ac.patLens[pid]); l > bestLen {
 					bestLen = l
 					best = pid
 				}
@@ -257,9 +258,9 @@ func (ac *AhoCorasick) findLeftmostLongest(haystack []byte, pos int) (Match, boo
 			ms := imp.matches(state)
 			// Find the longest match among outputs.
 			pid := ms[0]
-			patLen := len(ac.patterns[pid])
+			patLen := int(ac.patLens[pid])
 			for _, p := range ms[1:] {
-				if l := len(ac.patterns[p]); l > patLen {
+				if l := int(ac.patLens[p]); l > patLen {
 					patLen = l
 					pid = p
 				}

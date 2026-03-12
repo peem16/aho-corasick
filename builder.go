@@ -109,10 +109,12 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 
 	// Deep-copy patterns so the caller can safely reuse their slice.
 	patsCopy := make([][]byte, len(patterns))
+	patLens := make([]int32, len(patterns))
 	for i, p := range patterns {
 		cp := make([]byte, len(p))
 		copy(cp, p)
 		patsCopy[i] = cp
+		patLens[i] = int32(len(p))
 	}
 
 	return &AhoCorasick{
@@ -121,6 +123,7 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 		matchKind: b.matchKind,
 		kind:      kind,
 		patterns:  patsCopy,
+		patLens:   patLens,
 		patCount:  len(patterns),
 	}, nil
 }
