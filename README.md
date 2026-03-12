@@ -351,6 +351,10 @@ BenchmarkReplaceAll_1MB                                ~453 MB/s
 
 ---
 
+## UPDATE TEST
+
+make bench-report
+
 ## License
 
 MIT
