@@ -1,0 +1,60 @@
+{
+  "topic": "overlapping",
+  "title": "FindOverlappingIter",
+  "series": [
+    "NFA_Small",
+    "DFA_Small",
+    "NFA_Medium",
+    "DFA_Medium"
+  ],
+  "runs": [
+    {
+      "label": "f73649a",
+      "commit": "f73649a",
+      "timestamp": "2026-03-12T19:18:12Z",
+      "run_id": "20260312T191812Z",
+      "ns_per_op": {
+        "DFA_Medium": 2216587,
+        "DFA_Small": 2402361,
+        "NFA_Medium": 3540144,
+        "NFA_Small": 4081434
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 7,
+        "DFA_Small": 8,
+        "NFA_Medium": 12,
+        "NFA_Small": 14
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "f73649a",
+      "commit": "f73649a",
+      "timestamp": "2026-03-12T19:19:32Z",
+      "run_id": "20260312T191932Z",
+      "ns_per_op": {
+        "DFA_Medium": 2225668,
+        "DFA_Small": 2401078,
+        "NFA_Medium": 3655088,
+        "NFA_Small": 4032093
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 7,
+        "DFA_Small": 8,
+        "NFA_Medium": 12,
+        "NFA_Small": 14
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    }
+  ]
+}
