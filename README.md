@@ -122,6 +122,112 @@ for {
 
 ---
 
+## FindOverlapping: performance guide
+
+### 1. ใช้ `MatchKindStandard` เท่านั้น
+
+`FindOverlappingIter` ทำงานถูกต้องเฉพาะกับ `MatchKindStandard` ถ้าใช้กับ `LeftmostFirst` หรือ `LeftmostLongest` จะได้ผลเหมือน `FindIter` ปกติ (ไม่มี overlap)
+
+```go
+// ถูก
+ac, _ := ahocorasick.NewBuilder().
+    MatchKind(ahocorasick.MatchKindStandard). // default แล้ว — ไม่ต้องตั้งก็ได้
+    BuildString(patterns)
+
+// ผิด — overlapping จะไม่ทำงาน
+ac, _ := ahocorasick.NewBuilder().
+    MatchKind(ahocorasick.MatchKindLeftmostLongest).
+    BuildString(patterns)
+```
+
+### 2. ต้อง call `it.Close()` เสมอ
+
+Iterator ดึงมาจาก `sync.Pool` ถ้าไม่คืน object จะ allocate ใหม่ทุก call แทนที่จะ reuse
+
+```go
+// ถูก — ใช้ defer เพื่อไม่ให้ลืม
+it := ac.FindOverlappingIterString(text)
+defer it.Close()
+for {
+    m, ok := it.Next()
+    if !ok { break }
+    process(m)
+}
+
+// ผิด — leaks iterator, ทำให้ 0 allocs ไม่เป็นจริง
+it := ac.FindOverlappingIterString(text)
+for { ... } // ไม่มี Close
+```
+
+### 3. Process inline อย่า collect ก่อน
+
+อย่า `append` match ลง slice แล้วค่อย loop ทีหลัง — จะเสีย allocation ที่ `[]Match` โดยไม่จำเป็น
+
+```go
+// ดีที่สุด — 0 allocs ตลอด
+it := ac.FindOverlappingIter(haystack)
+defer it.Close()
+for {
+    m, ok := it.Next()
+    if !ok { break }
+    process(m) // handle ทันที
+}
+
+// หลีกเลี่ยง — allocates []Match
+matches := make([]Match, 0, 64)
+it := ac.FindOverlappingIter(haystack)
+for { m, ok := it.Next(); if !ok { break }; matches = append(matches, m) }
+it.Close()
+for _, m := range matches { process(m) } // ไม่มีเหตุผลต้องทำแบบนี้
+```
+
+### 4. ใช้ `m.Bytes(haystack)` แทนการ copy
+
+`m.Bytes(haystack)` คืน slice ของ haystack ตรงๆ ไม่ copy — ถ้าแค่ต้องการอ่านค่า match อย่าแปลงเป็น string โดยไม่จำเป็น
+
+```go
+// zero-copy — ดี
+b := m.Bytes(haystack) // []byte ที่ชี้ไปใน haystack
+
+// allocates string — ทำเฉพาะตอนที่ต้องการ string จริงๆ
+s := string(m.Bytes(haystack))
+```
+
+### 5. Force DFA เมื่อ pattern มากกว่า 10
+
+`Auto` จะเลือก `ContiguousNFA` เมื่อ pattern > 10 และ `MatchKind == Standard` NFA ใช้ binary search ต่อ byte ซึ่งช้ากว่า DFA ที่ใช้ O(1) table lookup ถ้าต้องการ throughput สูงสุดและยอมรับ memory เพิ่มได้ ให้ force DFA
+
+```go
+ac, _ := ahocorasick.NewBuilder().
+    Kind(ahocorasick.AhoCorasickKindDFA). // force DFA แม้ pattern จะเยอะ
+    BuildString(manyPatterns)
+```
+
+memory ของ DFA = `numStates × 256 × 4 bytes` ถ้า pattern มีหลักพัน state อาจใช้ RAM หลายสิบ MB
+
+### 6. พิจารณาปิด prefilter เมื่อ match หนาแน่น
+
+Prefilter จะ skip ตำแหน่งได้เฉพาะตอนที่ automaton กลับมาที่ start state เท่านั้น ในโหมด overlapping state จะไม่ reset ระหว่าง match ทำให้ prefilter แทบไม่มีผลหลัง match แรก ถ้า haystack มี match ถี่มาก (เช่น pattern `"a"` ใน `"aaaa..."`) ให้ปิด prefilter เพื่อตัด overhead ออก
+
+```go
+ac, _ := ahocorasick.NewBuilder().
+    Prefilter(false). // ปิดเมื่อ match density สูง
+    BuildString(patterns)
+```
+
+### สรุป checklist
+
+```
+[✓] MatchKind = Standard (default)
+[✓] defer it.Close() ทุกครั้ง
+[✓] process match inline ใน loop
+[✓] ใช้ m.Bytes(haystack) แทน copy
+[✓] force DFA ถ้า pattern > 10 และต้องการ max throughput
+[✓] ปิด Prefilter ถ้า match density สูง
+```
+
+---
+
 ## Zero-allocation iteration
 
 `FindIter` returns an iterator from an internal `sync.Pool`. Call `Close()` to return it to the pool. This keeps the hot search path at `0 allocs/op`.
