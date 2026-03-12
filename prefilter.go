@@ -126,21 +126,29 @@ func (pf *prefilter) next(haystack []byte, pos int) int {
 }
 
 // indexByteTwo finds the first occurrence of b0 or b1 in s.
+// Uses bytes.IndexByte (SIMD on amd64) for each byte and returns the minimum.
 func indexByteTwo(s []byte, b0, b1 byte) int {
-	for i, b := range s {
-		if b == b0 || b == b1 {
-			return i
-		}
+	i0 := bytes.IndexByte(s, b0)
+	i1 := bytes.IndexByte(s, b1)
+	if i0 < 0 {
+		return i1
 	}
-	return -1
+	if i1 < 0 || i0 <= i1 {
+		return i0
+	}
+	return i1
 }
 
 // indexByteThree finds the first occurrence of b0, b1, or b2 in s.
+// Uses bytes.IndexByte (SIMD on amd64) for each byte and returns the minimum.
 func indexByteThree(s []byte, b0, b1, b2 byte) int {
-	for i, b := range s {
-		if b == b0 || b == b1 || b == b2 {
-			return i
-		}
+	best := indexByteTwo(s, b0, b1)
+	i2 := bytes.IndexByte(s, b2)
+	if best < 0 {
+		return i2
 	}
-	return -1
+	if i2 < 0 || best <= i2 {
+		return best
+	}
+	return i2
 }

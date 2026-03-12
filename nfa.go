@@ -185,9 +185,10 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 		}
 	}
 
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
+	// Use a head index rather than reslicing to avoid retaining unreachable
+	// memory at the front of the slice.
+	for head := 0; head < len(queue); head++ {
+		cur := queue[head]
 
 		for _, tr := range n.trans[cur] {
 			b := tr.b
@@ -272,9 +273,9 @@ func (n *NFA) addDeadTransitions(tmpOutputs [][]PatternID) {
 		if len(tmpOutputs[s]) == 0 {
 			continue
 		}
-		// For every byte 0-255 not already in n.trans[s], if following failure
-		// links from s doesn't lead to a longer match state, add a dead transition.
-		present := make(map[byte]bool, len(n.trans[s]))
+		// Mark which bytes already have an explicit transition.
+		// Use a stack-allocated [256]bool to avoid map allocation per state.
+		var present [256]bool
 		for _, tr := range n.trans[s] {
 			present[tr.b] = true
 		}
@@ -282,11 +283,8 @@ func (n *NFA) addDeadTransitions(tmpOutputs [][]PatternID) {
 			if present[byte(b)] {
 				continue
 			}
-			// Does the failure chain from s on byte b eventually reach
-			// another match state (longer match)?  For leftmost semantics,
-			// if not, we want to terminate here.
-			// Simple conservative approach: add dead transition for all
-			// undefined bytes at a match state.
+			// Add a dead-state transition for all undefined bytes at a match
+			// state, so the search terminates cleanly for leftmost semantics.
 			n.addTrans(s, byte(b), deadStateID)
 		}
 	}
