@@ -135,9 +135,12 @@ func (it *FindOverlappingIter) nextNFA() (Match, bool) {
 	transBase := nfa.transBase
 	transLen := nfa.transLen
 	startTrans := &nfa.startTrans
+	denseTrans := nfa.denseTrans
+	denseIdx := nfa.denseIdx
 	outputs := nfa.outputs
 	outLen := nfa.outLen
 	useAlpha := nfa.useAlpha
+	pf := it.ac.pf
 
 	// Drain remaining matches from the current state.
 	if it.matchIdx > 0 {
@@ -171,6 +174,18 @@ func (it *FindOverlappingIter) nextNFA() (Match, bool) {
 	_ = hay[n-1]
 
 	for pos < n {
+		// Prefilter: skip ahead when at start state.
+		if pf.enabled && state == startStateID {
+			next := pf.next(hay, pos)
+			if next < 0 {
+				it.pos = n
+				it.state = startStateID
+				it.done = true
+				return Match{}, false
+			}
+			pos = next
+		}
+
 		b := hay[pos]
 		pos++
 
@@ -181,6 +196,8 @@ func (it *FindOverlappingIter) nextNFA() (Match, bool) {
 
 		if state == startStateID {
 			state = startTrans[b]
+		} else if di := denseIdx[state]; di >= 0 {
+			state = denseTrans[int(di)<<8|int(b)]
 		} else {
 			for {
 				if state == deadStateID {

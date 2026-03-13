@@ -29,24 +29,30 @@ type nfaState struct {
 // NFA is an Aho-Corasick Non-deterministic Finite Automaton.
 //
 // Memory layout
-//   - states    : flat []nfaState  — O(S) where S = number of states
-//   - transBuf  : flat []nfaTrans  — all transitions concatenated for cache locality
-//   - transBase : []int32          — per-state offset into transBuf
-//   - transLen  : []int32          — per-state transition count
-//   - outputs   : flat []PatternID — all output pattern lists concatenated
-//   - outLen    : []int32          — per-state output count
-//   - startTrans: [256]stateID     — precomputed dense table for start state (O(1) lookup)
+//   - states     : flat []nfaState  — O(S) where S = number of states
+//   - transBuf   : flat []nfaTrans  — all transitions concatenated for cache locality
+//   - transBase  : []int32          — per-state offset into transBuf
+//   - transLen   : []int32          — per-state transition count
+//   - outputs    : flat []PatternID — all output pattern lists concatenated
+//   - outLen     : []int32          — per-state output count
+//   - startTrans : [256]stateID     — precomputed dense table for start state
+//   - denseTrans : []stateID        — precomputed dense tables for shallow states
+//   - denseIdx   : []int32          — per-state index into denseTrans (-1 = sparse)
 //
-// This layout keeps all hot data contiguous in memory for optimal
-// cache utilisation during search.
+// States at depth ≤ denseDepth get precomputed 256-entry dense transition
+// tables (like a partial DFA). This eliminates binary search and failure-link
+// traversal for the most frequently visited states while keeping memory
+// usage proportional to the number of shallow states, not all states.
 type NFA struct {
 	states     []nfaState
-	transBuf   []nfaTrans // all transitions concatenated
-	transBase  []int32    // transBase[stateID] = start index in transBuf
-	transLen   []int32    // transLen[stateID] = number of transitions
+	transBuf   []nfaTrans  // all transitions concatenated
+	transBase  []int32     // transBase[stateID] = start index in transBuf
+	transLen   []int32     // transLen[stateID] = number of transitions
 	outputs    []PatternID // all output pattern IDs, concatenated
 	outLen     []int32     // outLen[stateID] = number of outputs for that state
 	startTrans [256]stateID // precomputed transitions from start state
+	denseTrans []stateID   // dense tables for shallow states (256 entries each)
+	denseIdx   []int32     // denseIdx[stateID] = base index in denseTrans; -1 = sparse
 	matchKind  MatchKind
 	// alphabet maps raw bytes to (possibly normalised) bytes.
 	// Used for ASCII case-insensitive matching.
@@ -90,6 +96,10 @@ func (n *NFA) nextState(s stateID, b byte) stateID {
 	// Fast path: start state uses precomputed dense table.
 	if s == startStateID {
 		return n.startTrans[b]
+	}
+	// Fast path: shallow states with precomputed dense tables.
+	if di := n.denseIdx[s]; di >= 0 {
+		return n.denseTrans[int(di)<<8|int(b)]
 	}
 	for {
 		// Dead state is a sink — stays dead.
@@ -248,7 +258,10 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 	// ---- Phase 5: precompute start state dense transition table ----
 	n.buildStartTrans()
 
-	// ---- Phase 6: flatten output table ----
+	// ---- Phase 6: precompute dense tables for shallow states ----
+	n.buildDenseTrans(3) // depth ≤ 3
+
+	// ---- Phase 7: flatten output table ----
 	n.flattenOutputs(tmpOutputs)
 
 	return n
@@ -347,6 +360,63 @@ func (n *NFA) buildStartTrans() {
 		} else {
 			n.startTrans[b] = startStateID
 		}
+	}
+}
+
+// buildDenseTrans precomputes 256-entry dense transition tables for states
+// at depth ≤ maxDepth (excluding start state, which has its own table).
+// This turns binary-search + failure-link traversal into a single O(1) lookup
+// for the most frequently visited states.
+func (n *NFA) buildDenseTrans(maxDepth uint16) {
+	numStates := stateID(len(n.states))
+	n.denseIdx = make([]int32, numStates)
+	for i := range n.denseIdx {
+		n.denseIdx[i] = -1
+	}
+
+	// Count shallow states (skip dead=0 and start=1).
+	denseCount := 0
+	for s := stateID(2); s < numStates; s++ {
+		if n.states[s].depth <= maxDepth {
+			denseCount++
+		}
+	}
+	if denseCount == 0 {
+		return
+	}
+
+	n.denseTrans = make([]stateID, denseCount*256)
+	idx := int32(0)
+	for s := stateID(2); s < numStates; s++ {
+		if n.states[s].depth > maxDepth {
+			continue
+		}
+		n.denseIdx[s] = idx
+		base := int(idx) << 8
+		for b := 0; b < 256; b++ {
+			bb := byte(b)
+			if n.useAlpha {
+				bb = n.alphabet[bb]
+			}
+			// Simulate nextState(s, bb) without the dense table shortcut.
+			cur := s
+			for {
+				if cur == deadStateID {
+					n.denseTrans[base+b] = deadStateID
+					break
+				}
+				if next, ok := n.lookup(cur, bb); ok {
+					n.denseTrans[base+b] = next
+					break
+				}
+				if n.states[cur].fail == startStateID {
+					n.denseTrans[base+b] = n.startTrans[b]
+					break
+				}
+				cur = n.states[cur].fail
+			}
+		}
+		idx++
 	}
 }
 
