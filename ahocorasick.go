@@ -9,6 +9,7 @@ type AhoCorasick struct {
 	matchKind MatchKind
 	kind      AhoCorasickKind
 	patterns  [][]byte // deep copy of original patterns
+	patLens   []int32  // cached pattern lengths for hot-path access
 	patCount  int
 }
 
@@ -94,6 +95,14 @@ func (ac *AhoCorasick) findFrom(haystack []byte, pos int, cur stateID) (Match, b
 // ---------------------------------------------------------------------------
 
 func (ac *AhoCorasick) findStandard(haystack []byte, pos int, state stateID) (Match, bool) {
+	// Use specialized NFA path when available.
+	if nfa, ok := ac.imp.(*NFA); ok {
+		return ac.findStandardNFA(nfa, haystack, pos, state)
+	}
+	return ac.findStandardGeneric(haystack, pos, state)
+}
+
+func (ac *AhoCorasick) findStandardGeneric(haystack []byte, pos int, state stateID) (Match, bool) {
 	imp := ac.imp
 	pf := ac.pf
 	n := len(haystack)
@@ -103,7 +112,7 @@ func (ac *AhoCorasick) findStandard(haystack []byte, pos int, state stateID) (Ma
 	if imp.isMatch(state) {
 		ms := imp.matches(state)
 		pid := ms[0]
-		patLen := len(ac.patterns[pid])
+		patLen := int(ac.patLens[pid])
 		start := pos - patLen
 		if start < 0 {
 			start = 0
@@ -135,7 +144,119 @@ func (ac *AhoCorasick) findStandard(haystack []byte, pos int, state stateID) (Ma
 		if imp.isMatch(state) {
 			ms := imp.matches(state)
 			pid := ms[0]
-			patLen := len(ac.patterns[pid])
+			patLen := int(ac.patLens[pid])
+			return Match{id: pid, start: pos - patLen, end: pos}, true
+		}
+	}
+
+	return Match{}, false
+}
+
+// findStandardNFA is an inlined NFA path for findStandard that eliminates
+// interface dispatch, binary search on shallow states (via dense tables),
+// and enables the compiler to register-allocate NFA slice headers.
+func (ac *AhoCorasick) findStandardNFA(nfa *NFA, haystack []byte, pos int, state stateID) (Match, bool) {
+	pf := ac.pf
+	patLens := ac.patLens
+	n := len(haystack)
+
+	states := nfa.states
+	transBuf := nfa.transBuf
+	transBase := nfa.transBase
+	transLen := nfa.transLen
+	startTrans := &nfa.startTrans
+	denseTrans := nfa.denseTrans
+	denseIdx := nfa.denseIdx
+	outputs := nfa.outputs
+	useAlpha := nfa.useAlpha
+
+	// Check for a match at the current position before consuming any byte.
+	if states[state].outputIdx >= 0 {
+		pid := outputs[states[state].outputIdx]
+		patLen := int(patLens[pid])
+		start := pos - patLen
+		if start < 0 {
+			start = 0
+		}
+		return Match{id: pid, start: start, end: pos}, true
+	}
+
+	if n == 0 || pos >= n {
+		return Match{}, false
+	}
+
+	_ = haystack[n-1]
+
+	for pos < n {
+		if pf.enabled && state == startStateID {
+			next := pf.next(haystack, pos)
+			if next < 0 {
+				return Match{}, false
+			}
+			pos = next
+		}
+
+		b := haystack[pos]
+		pos++
+
+		// ---- inlined nextState ----
+		if useAlpha {
+			b = nfa.alphabet[b]
+		}
+		if state == startStateID {
+			state = startTrans[b]
+		} else if di := denseIdx[state]; di >= 0 {
+			state = denseTrans[int(di)<<8|int(b)]
+		} else {
+			for {
+				if state == deadStateID {
+					break
+				}
+				tbase := int(transBase[state])
+				tlen := int(transLen[state])
+				tr := transBuf[tbase : tbase+tlen]
+				found := false
+				if tlen <= 4 {
+					for i := 0; i < tlen; i++ {
+						if tr[i].b == b {
+							state = tr[i].next
+							found = true
+							break
+						}
+						if tr[i].b > b {
+							break
+						}
+					}
+				} else {
+					lo, hi := 0, tlen
+					for lo < hi {
+						mid := int(uint(lo+hi) >> 1)
+						if tr[mid].b < b {
+							lo = mid + 1
+						} else {
+							hi = mid
+						}
+					}
+					if lo < tlen && tr[lo].b == b {
+						state = tr[lo].next
+						found = true
+					}
+				}
+				if found {
+					break
+				}
+				if states[state].fail == startStateID {
+					state = startTrans[b]
+					break
+				}
+				state = states[state].fail
+			}
+		}
+		// ---- end inlined nextState ----
+
+		if states[state].outputIdx >= 0 {
+			pid := outputs[states[state].outputIdx]
+			patLen := int(patLens[pid])
 			return Match{id: pid, start: pos - patLen, end: pos}, true
 		}
 	}
@@ -190,7 +311,7 @@ func (ac *AhoCorasick) findLeftmostFirst(haystack []byte, pos int) (Match, bool)
 		if imp.isMatch(state) {
 			ms := imp.matches(state)
 			pid := ms[0] // lowest PatternID = LeftmostFirst
-			patLen := len(ac.patterns[pid])
+			patLen := int(ac.patLens[pid])
 			start := pos - patLen
 			if !hasBest || start < best.start || (start == best.start && pid < best.id) {
 				best = Match{id: pid, start: start, end: pos}
@@ -222,9 +343,9 @@ func (ac *AhoCorasick) findLeftmostLongest(haystack []byte, pos int) (Match, boo
 			ms := imp.matches(startStateID)
 			// Pick longest pattern at start state.
 			best := ms[0]
-			bestLen := len(ac.patterns[best])
+			bestLen := int(ac.patLens[best])
 			for _, pid := range ms[1:] {
-				if l := len(ac.patterns[pid]); l > bestLen {
+				if l := int(ac.patLens[pid]); l > bestLen {
 					bestLen = l
 					best = pid
 				}
@@ -257,9 +378,9 @@ func (ac *AhoCorasick) findLeftmostLongest(haystack []byte, pos int) (Match, boo
 			ms := imp.matches(state)
 			// Find the longest match among outputs.
 			pid := ms[0]
-			patLen := len(ac.patterns[pid])
+			patLen := int(ac.patLens[pid])
 			for _, p := range ms[1:] {
-				if l := len(ac.patterns[p]); l > patLen {
+				if l := int(ac.patLens[p]); l > patLen {
 					patLen = l
 					pid = p
 				}

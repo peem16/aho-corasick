@@ -1,6 +1,7 @@
 package ahocorasick_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -37,6 +38,15 @@ func haystackOfCI(size int, patterns []string) []byte {
 	return haystackOf(size, upper)
 }
 
+// xlPatterns generates N patterns of the form "patternNNN".
+func xlPatterns(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("pattern%d", i)
+	}
+	return out
+}
+
 var (
 	hayScale100   = haystackWithMatchCount(100, smallPatterns)
 	hayScale1000  = haystackWithMatchCount(1000, smallPatterns)
@@ -44,6 +54,14 @@ var (
 
 	hay1MB_ci        = haystackOfCI(1024*1024, smallPatterns)
 	hay1MB_medium_ci = haystackOfCI(1024*1024, mediumPatterns)
+
+	// Large pattern sets for high-pattern-count benchmarks.
+	patterns1000  = xlPatterns(1000)
+	patterns5000  = xlPatterns(5000)
+	patterns10000 = xlPatterns(10000)
+	hay1MB_1000   = haystackOf(1024*1024, patterns1000)
+	hay1MB_5000   = haystackOf(1024*1024, patterns5000)
+	hay1MB_10000  = haystackOf(1024*1024, patterns10000)
 )
 
 // ---------------------------------------------------------------------------
@@ -339,6 +357,97 @@ func BenchmarkScaling_NFA_Small_1000Matches(b *testing.B) {
 func BenchmarkScaling_NFA_Small_10000Matches(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
 	hay := hayScale10000
+	b.SetBytes(int64(len(hay)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Group F: High pattern count — FindOverlappingIter with 1000/5000/10000 patterns
+// ---------------------------------------------------------------------------
+
+func BenchmarkFindOverlapping_NFA_1000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, patterns1000,
+		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
+	hay := hay1MB_1000
+	b.SetBytes(int64(len(hay)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		it := a.FindOverlappingIter(hay)
+		for {
+			_, ok := it.Next()
+			if !ok {
+				break
+			}
+		}
+		it.Close()
+	}
+}
+
+func BenchmarkFindOverlapping_NFA_5000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, patterns5000,
+		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
+	hay := hay1MB_5000
+	b.SetBytes(int64(len(hay)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		it := a.FindOverlappingIter(hay)
+		for {
+			_, ok := it.Next()
+			if !ok {
+				break
+			}
+		}
+		it.Close()
+	}
+}
+
+func BenchmarkFindOverlapping_NFA_10000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, patterns10000,
+		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
+	hay := hay1MB_10000
+	b.SetBytes(int64(len(hay)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		it := a.FindOverlappingIter(hay)
+		for {
+			_, ok := it.Next()
+			if !ok {
+				break
+			}
+		}
+		it.Close()
+	}
+}
+
+func BenchmarkFindAll_NFA_1000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, patterns1000,
+		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	hay := hay1MB_1000
+	b.SetBytes(int64(len(hay)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay)
+	}
+}
+
+func BenchmarkFindAll_NFA_5000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, patterns5000,
+		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	hay := hay1MB_5000
+	b.SetBytes(int64(len(hay)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay)
+	}
+}
+
+func BenchmarkFindAll_NFA_10000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, patterns10000,
+		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	hay := hay1MB_10000
 	b.SetBytes(int64(len(hay)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

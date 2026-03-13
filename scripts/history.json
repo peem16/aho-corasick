@@ -55,6 +55,174 @@
         "NFA_Medium": 0,
         "NFA_Small": 0
       }
+    },
+    {
+      "label": "06d74f8",
+      "commit": "06d74f8",
+      "timestamp": "2026-03-12T19:26:44Z",
+      "run_id": "20260312T192644Z",
+      "ns_per_op": {
+        "DFA_Medium": 2116640,
+        "DFA_Small": 2272031,
+        "NFA_Medium": 3868780,
+        "NFA_Small": 4292864
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 7,
+        "DFA_Small": 7,
+        "NFA_Medium": 13,
+        "NFA_Small": 15
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "06d74f8",
+      "commit": "06d74f8",
+      "timestamp": "2026-03-12T20:00:33Z",
+      "run_id": "20260312T200033Z",
+      "ns_per_op": {
+        "DFA_Medium": 2235563,
+        "DFA_Small": 2562254,
+        "NFA_Medium": 3813512,
+        "NFA_Small": 4497076
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 7,
+        "DFA_Small": 8,
+        "NFA_Medium": 13,
+        "NFA_Small": 15
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "06d74f8",
+      "commit": "06d74f8",
+      "timestamp": "2026-03-12T20:14:42Z",
+      "run_id": "20260312T201442Z",
+      "ns_per_op": {
+        "DFA_Medium": 2223594,
+        "DFA_Small": 2539395,
+        "NFA_Medium": 3867776,
+        "NFA_Small": 4405821
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 7,
+        "DFA_Small": 8,
+        "NFA_Medium": 13,
+        "NFA_Small": 15
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "9d63c5e",
+      "commit": "9d63c5e",
+      "timestamp": "2026-03-13T03:37:15Z",
+      "run_id": "20260313T033715Z",
+      "ns_per_op": {
+        "DFA_Medium": 2443884,
+        "DFA_Small": 2778383,
+        "NFA_Medium": 773946,
+        "NFA_Small": 627763
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 8,
+        "DFA_Small": 9,
+        "NFA_Medium": 2,
+        "NFA_Small": 2
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "9d63c5e",
+      "commit": "9d63c5e",
+      "timestamp": "2026-03-13T04:14:12Z",
+      "run_id": "20260313T041412Z",
+      "ns_per_op": {
+        "DFA_Medium": 2017091,
+        "DFA_Small": 2204880,
+        "NFA_Medium": 643998,
+        "NFA_Small": 600038
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 7,
+        "DFA_Small": 7,
+        "NFA_Medium": 2,
+        "NFA_Small": 2
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "9d63c5e",
+      "commit": "9d63c5e",
+      "timestamp": "2026-03-13T04:30:44Z",
+      "run_id": "20260313T043044Z",
+      "ns_per_op": {
+        "DFA_Medium": 3227416,
+        "DFA_Small": 2181205,
+        "NFA_Medium": 455940,
+        "NFA_Small": 373766
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 7,
+        "DFA_Small": 7,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "9d63c5e",
+      "commit": "9d63c5e",
+      "timestamp": "2026-03-13T04:44:18Z",
+      "run_id": "20260313T044418Z",
+      "ns_per_op": {
+        "DFA_Medium": 1992904,
+        "DFA_Small": 2192109,
+        "NFA_Medium": 446227,
+        "NFA_Small": 370250
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 6,
+        "DFA_Small": 7,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
     }
   ]
 }

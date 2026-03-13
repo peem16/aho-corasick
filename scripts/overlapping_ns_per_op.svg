@@ -24,23 +24,23 @@
     <line x1="88" y1="288.00" x2="780" y2="288.00"
           stroke="#e5e7eb" stroke-dasharray="4 3" stroke-width="1"/>
     <text x="82" y="292.00"
-          text-anchor="end" font-size="11" fill="#9ca3af">1.99 ms</text>
+          text-anchor="end" font-size="11" fill="#9ca3af">0.00 ns</text>
     <line x1="88" y1="227.00" x2="780" y2="227.00"
           stroke="#e5e7eb" stroke-dasharray="4 3" stroke-width="1"/>
     <text x="82" y="231.00"
-          text-anchor="end" font-size="11" fill="#9ca3af">2.57 ms</text>
+          text-anchor="end" font-size="11" fill="#9ca3af">1.25 ms</text>
     <line x1="88" y1="166.00" x2="780" y2="166.00"
           stroke="#e5e7eb" stroke-dasharray="4 3" stroke-width="1"/>
     <text x="82" y="170.00"
-          text-anchor="end" font-size="11" fill="#9ca3af">3.15 ms</text>
+          text-anchor="end" font-size="11" fill="#9ca3af">2.50 ms</text>
     <line x1="88" y1="105.00" x2="780" y2="105.00"
           stroke="#e5e7eb" stroke-dasharray="4 3" stroke-width="1"/>
     <text x="82" y="109.00"
-          text-anchor="end" font-size="11" fill="#9ca3af">3.73 ms</text>
+          text-anchor="end" font-size="11" fill="#9ca3af">3.74 ms</text>
     <line x1="88" y1="44.00" x2="780" y2="44.00"
           stroke="#e5e7eb" stroke-dasharray="4 3" stroke-width="1"/>
     <text x="82" y="48.00"
-          text-anchor="end" font-size="11" fill="#9ca3af">4.31 ms</text>
+          text-anchor="end" font-size="11" fill="#9ca3af">4.99 ms</text>
     <text x="13" y="166.00" text-anchor="middle" font-size="11" fill="#6b7280"
           transform="rotate(-90 13 166.00)">ns/op</text>
 
@@ -48,58 +48,184 @@
   
     <text x="88.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
           transform="rotate(-40 88.00 304)">f73649a</text>
+    <text x="174.50" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 174.50 304)">f73649a</text>
+    <text x="261.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 261.00 304)">06d74f8</text>
+    <text x="347.50" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 347.50 304)">06d74f8</text>
+    <text x="434.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 434.00 304)">06d74f8</text>
+    <text x="520.50" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 520.50 304)">9d63c5e</text>
+    <text x="607.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 607.00 304)">9d63c5e</text>
+    <text x="693.50" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 693.50 304)">9d63c5e</text>
     <text x="780.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
-          transform="rotate(-40 780.00 304)">f73649a</text>
+          transform="rotate(-40 780.00 304)">9d63c5e</text>
 
   <!-- data series -->
   
     <!-- series: NFA_Small -->
-    <path d="M 88.00 67.61 L 780.00 72.82"
+    <path d="M 88.00 88.52 L 174.50 90.93 L 261.00 78.18 L 347.50 68.20 L 434.00 72.66 L 520.50 257.32 L 607.00 258.67 L 693.50 269.73 L 780.00 269.90"
           fill="none" stroke="#e69f00" stroke-width="2.5"
           stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="88.00" cy="67.61" r="4.5"
+      <circle cx="88.00" cy="88.52" r="4.5"
               fill="#e69f00" stroke="white" stroke-width="1.5">
         <title>NFA_Small @ f73649a: 4,081,434</title>
       </circle>
-      <circle cx="780.00" cy="72.82" r="4.5"
+      <circle cx="174.50" cy="90.93" r="4.5"
               fill="#e69f00" stroke="white" stroke-width="1.5">
         <title>NFA_Small @ f73649a: 4,032,093</title>
       </circle>
+      <circle cx="261.00" cy="78.18" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 06d74f8: 4,292,864</title>
+      </circle>
+      <circle cx="347.50" cy="68.20" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 06d74f8: 4,497,076</title>
+      </circle>
+      <circle cx="434.00" cy="72.66" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 06d74f8: 4,405,821</title>
+      </circle>
+      <circle cx="520.50" cy="257.32" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 9d63c5e: 627,763</title>
+      </circle>
+      <circle cx="607.00" cy="258.67" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 9d63c5e: 600,038</title>
+      </circle>
+      <circle cx="693.50" cy="269.73" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 9d63c5e: 373,766</title>
+      </circle>
+      <circle cx="780.00" cy="269.90" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 9d63c5e: 370,250</title>
+      </circle>
     <!-- series: DFA_Small -->
-    <path d="M 88.00 244.78 L 780.00 244.92"
+    <path d="M 88.00 170.58 L 174.50 170.65 L 261.00 176.95 L 347.50 162.77 L 434.00 163.89 L 520.50 152.21 L 607.00 180.24 L 693.50 181.39 L 780.00 180.86"
           fill="none" stroke="#56b4e9" stroke-width="2.5"
           stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="88.00" cy="244.78" r="4.5"
+      <circle cx="88.00" cy="170.58" r="4.5"
               fill="#56b4e9" stroke="white" stroke-width="1.5">
         <title>DFA_Small @ f73649a: 2,402,361</title>
       </circle>
-      <circle cx="780.00" cy="244.92" r="4.5"
+      <circle cx="174.50" cy="170.65" r="4.5"
               fill="#56b4e9" stroke="white" stroke-width="1.5">
         <title>DFA_Small @ f73649a: 2,401,078</title>
       </circle>
+      <circle cx="261.00" cy="176.95" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 06d74f8: 2,272,031</title>
+      </circle>
+      <circle cx="347.50" cy="162.77" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 06d74f8: 2,562,254</title>
+      </circle>
+      <circle cx="434.00" cy="163.89" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 06d74f8: 2,539,395</title>
+      </circle>
+      <circle cx="520.50" cy="152.21" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 9d63c5e: 2,778,383</title>
+      </circle>
+      <circle cx="607.00" cy="180.24" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 9d63c5e: 2,204,880</title>
+      </circle>
+      <circle cx="693.50" cy="181.39" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 9d63c5e: 2,181,205</title>
+      </circle>
+      <circle cx="780.00" cy="180.86" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 9d63c5e: 2,192,109</title>
+      </circle>
     <!-- series: NFA_Medium -->
-    <path d="M 88.00 124.73 L 780.00 112.60"
+    <path d="M 88.00 114.97 L 174.50 109.36 L 261.00 98.91 L 347.50 101.61 L 434.00 98.96 L 520.50 250.17 L 607.00 256.52 L 693.50 265.72 L 780.00 266.19"
           fill="none" stroke="#009e73" stroke-width="2.5"
           stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="88.00" cy="124.73" r="4.5"
+      <circle cx="88.00" cy="114.97" r="4.5"
               fill="#009e73" stroke="white" stroke-width="1.5">
         <title>NFA_Medium @ f73649a: 3,540,144</title>
       </circle>
-      <circle cx="780.00" cy="112.60" r="4.5"
+      <circle cx="174.50" cy="109.36" r="4.5"
               fill="#009e73" stroke="white" stroke-width="1.5">
         <title>NFA_Medium @ f73649a: 3,655,088</title>
       </circle>
+      <circle cx="261.00" cy="98.91" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 06d74f8: 3,868,780</title>
+      </circle>
+      <circle cx="347.50" cy="101.61" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 06d74f8: 3,813,512</title>
+      </circle>
+      <circle cx="434.00" cy="98.96" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 06d74f8: 3,867,776</title>
+      </circle>
+      <circle cx="520.50" cy="250.17" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 9d63c5e: 773,946</title>
+      </circle>
+      <circle cx="607.00" cy="256.52" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 9d63c5e: 643,998</title>
+      </circle>
+      <circle cx="693.50" cy="265.72" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 9d63c5e: 455,940</title>
+      </circle>
+      <circle cx="780.00" cy="266.19" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 9d63c5e: 446,227</title>
+      </circle>
     <!-- series: DFA_Medium -->
-    <path d="M 88.00 264.39 L 780.00 263.43"
+    <path d="M 88.00 179.66 L 174.50 179.22 L 261.00 184.55 L 347.50 178.74 L 434.00 179.32 L 520.50 168.55 L 607.00 189.41 L 693.50 130.26 L 780.00 190.60"
           fill="none" stroke="#cc79a7" stroke-width="2.5"
           stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="88.00" cy="264.39" r="4.5"
+      <circle cx="88.00" cy="179.66" r="4.5"
               fill="#cc79a7" stroke="white" stroke-width="1.5">
         <title>DFA_Medium @ f73649a: 2,216,587</title>
       </circle>
-      <circle cx="780.00" cy="263.43" r="4.5"
+      <circle cx="174.50" cy="179.22" r="4.5"
               fill="#cc79a7" stroke="white" stroke-width="1.5">
         <title>DFA_Medium @ f73649a: 2,225,668</title>
+      </circle>
+      <circle cx="261.00" cy="184.55" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 06d74f8: 2,116,640</title>
+      </circle>
+      <circle cx="347.50" cy="178.74" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 06d74f8: 2,235,563</title>
+      </circle>
+      <circle cx="434.00" cy="179.32" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 06d74f8: 2,223,594</title>
+      </circle>
+      <circle cx="520.50" cy="168.55" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 9d63c5e: 2,443,884</title>
+      </circle>
+      <circle cx="607.00" cy="189.41" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 9d63c5e: 2,017,091</title>
+      </circle>
+      <circle cx="693.50" cy="130.26" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 9d63c5e: 3,227,416</title>
+      </circle>
+      <circle cx="780.00" cy="190.60" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 9d63c5e: 1,992,904</title>
       </circle>
 
   <!-- legend -->

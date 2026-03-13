@@ -87,6 +87,7 @@ var findOverlappingIterPool = sync.Pool{
 // For Leftmost* semantics it behaves identically to FindIter.
 type FindOverlappingIter struct {
 	ac         *AhoCorasick
+	nfa        *NFA    // cached NFA pointer; nil when using DFA
 	haystack   []byte
 	pos        int     // current byte position in haystack
 	state      stateID // current automaton state
@@ -98,6 +99,7 @@ type FindOverlappingIter struct {
 func newFindOverlappingIter(ac *AhoCorasick, haystack []byte) *FindOverlappingIter {
 	it := findOverlappingIterPool.Get().(*FindOverlappingIter)
 	it.ac = ac
+	it.nfa, _ = ac.imp.(*NFA) // cache type assertion; nil if DFA
 	it.haystack = haystack
 	it.pos = 0
 	it.state = startStateID
@@ -112,7 +114,163 @@ func (it *FindOverlappingIter) Next() (Match, bool) {
 	if it.done {
 		return Match{}, false
 	}
+	if it.nfa != nil {
+		return it.nextNFA()
+	}
+	return it.nextGeneric()
+}
 
+// nextNFA is the specialized hot path for NFA overlapping iteration.
+// All NFA field accesses and the nextState/lookup logic are fully inlined
+// to eliminate function-call overhead and allow the compiler to keep
+// slice headers and hot variables in registers.
+func (it *FindOverlappingIter) nextNFA() (Match, bool) {
+	nfa := it.nfa
+	hay := it.haystack
+	patLens := it.ac.patLens
+
+	// Cache NFA slice fields as locals so the compiler can register-allocate them.
+	states := nfa.states
+	transBuf := nfa.transBuf
+	transBase := nfa.transBase
+	transLen := nfa.transLen
+	startTrans := &nfa.startTrans
+	denseTrans := nfa.denseTrans
+	denseIdx := nfa.denseIdx
+	outputs := nfa.outputs
+	outLen := nfa.outLen
+	useAlpha := nfa.useAlpha
+	pf := it.ac.pf
+
+	// Drain remaining matches from the current state.
+	if it.matchIdx > 0 {
+		st := &states[it.state]
+		if st.outputIdx >= 0 {
+			obase := int32(st.outputIdx)
+			olen := outLen[it.state]
+			if int32(it.matchIdx) < olen {
+				pid := outputs[obase+int32(it.matchIdx)]
+				m := Match{
+					id:    pid,
+					start: it.pos - int(patLens[pid]),
+					end:   it.pos,
+				}
+				it.matchIdx++
+				return m, true
+			}
+		}
+		it.matchIdx = 0
+	}
+
+	pos := it.pos
+	state := it.state
+	n := len(hay)
+	if pos >= n {
+		it.done = true
+		return Match{}, false
+	}
+
+	// BCE hint: tells the compiler hay[n-1] is in bounds.
+	_ = hay[n-1]
+
+	for pos < n {
+		// Prefilter: skip ahead when at start state.
+		if pf.enabled && state == startStateID {
+			next := pf.next(hay, pos)
+			if next < 0 {
+				it.pos = n
+				it.state = startStateID
+				it.done = true
+				return Match{}, false
+			}
+			pos = next
+		}
+
+		b := hay[pos]
+		pos++
+
+		// ---- inlined nextState(state, b) ----
+		if useAlpha {
+			b = nfa.alphabet[b]
+		}
+
+		if state == startStateID {
+			state = startTrans[b]
+		} else if di := denseIdx[state]; di >= 0 {
+			state = denseTrans[int(di)<<8|int(b)]
+		} else {
+			for {
+				if state == deadStateID {
+					break
+				}
+				// Inlined lookup in flattened transition buffer.
+				tbase := int(transBase[state])
+				tlen := int(transLen[state])
+				tr := transBuf[tbase : tbase+tlen]
+				found := false
+				if tlen <= 4 {
+					// Linear scan for small transition counts.
+					for i := 0; i < tlen; i++ {
+						if tr[i].b == b {
+							state = tr[i].next
+							found = true
+							break
+						}
+						if tr[i].b > b {
+							break
+						}
+					}
+				} else {
+					lo, hi := 0, tlen
+					for lo < hi {
+						mid := int(uint(lo+hi) >> 1)
+						if tr[mid].b < b {
+							lo = mid + 1
+						} else {
+							hi = mid
+						}
+					}
+					if lo < tlen && tr[lo].b == b {
+						state = tr[lo].next
+						found = true
+					}
+				}
+				if found {
+					break
+				}
+				// Failure link: if it points to start, use dense table.
+				if states[state].fail == startStateID {
+					state = startTrans[b]
+					break
+				}
+				state = states[state].fail
+			}
+		}
+		// ---- end inlined nextState ----
+
+		if states[state].outputIdx >= 0 {
+			obase := int32(states[state].outputIdx)
+			pid := outputs[obase]
+			m := Match{
+				id:    pid,
+				start: pos - int(patLens[pid]),
+				end:   pos,
+			}
+			it.pos = pos
+			it.state = state
+			it.matchIdx = 1
+			return m, true
+		}
+	}
+
+	it.pos = pos
+	it.state = state
+	it.done = true
+	return Match{}, false
+}
+
+// nextGeneric is the fallback path using the automaton interface.
+func (it *FindOverlappingIter) nextGeneric() (Match, bool) {
 	imp := it.ac.imp
 	hay := it.haystack
 
@@ -157,11 +315,13 @@ func (it *FindOverlappingIter) Next() (Match, bool) {
 // Close returns the iterator to the pool.
 func (it *FindOverlappingIter) Close() {
 	it.ac = nil
+	it.nfa = nil
 	it.haystack = nil
 	findOverlappingIterPool.Put(it)
 }
 
 // patternLen returns the byte length of pattern pid in ac.
+// Uses the cached int32 array to avoid slice header indirection.
 func patternLen(ac *AhoCorasick, pid PatternID) int {
-	return len(ac.patterns[pid])
+	return int(ac.patLens[pid])
 }
