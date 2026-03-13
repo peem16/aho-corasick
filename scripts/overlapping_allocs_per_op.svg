@@ -48,58 +48,184 @@
   
     <text x="88.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
           transform="rotate(-40 88.00 304)">f73649a</text>
+    <text x="174.50" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 174.50 304)">f73649a</text>
+    <text x="261.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 261.00 304)">06d74f8</text>
+    <text x="347.50" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 347.50 304)">06d74f8</text>
+    <text x="434.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 434.00 304)">06d74f8</text>
+    <text x="520.50" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 520.50 304)">9d63c5e</text>
+    <text x="607.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 607.00 304)">9d63c5e</text>
+    <text x="693.50" y="304" text-anchor="end" font-size="10" fill="#6b7280"
+          transform="rotate(-40 693.50 304)">9d63c5e</text>
     <text x="780.00" y="304" text-anchor="end" font-size="10" fill="#6b7280"
-          transform="rotate(-40 780.00 304)">f73649a</text>
+          transform="rotate(-40 780.00 304)">9d63c5e</text>
 
   <!-- data series -->
   
     <!-- series: NFA_Small -->
-    <path d="M 88.00 288.00 L 780.00 288.00"
+    <path d="M 88.00 288.00 L 174.50 288.00 L 261.00 288.00 L 347.50 288.00 L 434.00 288.00 L 520.50 288.00 L 607.00 288.00 L 693.50 288.00 L 780.00 288.00"
           fill="none" stroke="#e69f00" stroke-width="2.5"
           stroke-linejoin="round" stroke-linecap="round"/>
       <circle cx="88.00" cy="288.00" r="4.5"
               fill="#e69f00" stroke="white" stroke-width="1.5">
         <title>NFA_Small @ f73649a: 0</title>
       </circle>
-      <circle cx="780.00" cy="288.00" r="4.5"
+      <circle cx="174.50" cy="288.00" r="4.5"
               fill="#e69f00" stroke="white" stroke-width="1.5">
         <title>NFA_Small @ f73649a: 0</title>
       </circle>
+      <circle cx="261.00" cy="288.00" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="347.50" cy="288.00" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="434.00" cy="288.00" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="520.50" cy="288.00" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="607.00" cy="288.00" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="693.50" cy="288.00" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="780.00" cy="288.00" r="4.5"
+              fill="#e69f00" stroke="white" stroke-width="1.5">
+        <title>NFA_Small @ 9d63c5e: 0</title>
+      </circle>
     <!-- series: DFA_Small -->
-    <path d="M 88.00 288.00 L 780.00 288.00"
+    <path d="M 88.00 288.00 L 174.50 288.00 L 261.00 288.00 L 347.50 288.00 L 434.00 288.00 L 520.50 288.00 L 607.00 288.00 L 693.50 288.00 L 780.00 288.00"
           fill="none" stroke="#56b4e9" stroke-width="2.5"
           stroke-linejoin="round" stroke-linecap="round"/>
       <circle cx="88.00" cy="288.00" r="4.5"
               fill="#56b4e9" stroke="white" stroke-width="1.5">
         <title>DFA_Small @ f73649a: 0</title>
       </circle>
-      <circle cx="780.00" cy="288.00" r="4.5"
+      <circle cx="174.50" cy="288.00" r="4.5"
               fill="#56b4e9" stroke="white" stroke-width="1.5">
         <title>DFA_Small @ f73649a: 0</title>
       </circle>
+      <circle cx="261.00" cy="288.00" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="347.50" cy="288.00" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="434.00" cy="288.00" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="520.50" cy="288.00" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="607.00" cy="288.00" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="693.50" cy="288.00" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="780.00" cy="288.00" r="4.5"
+              fill="#56b4e9" stroke="white" stroke-width="1.5">
+        <title>DFA_Small @ 9d63c5e: 0</title>
+      </circle>
     <!-- series: NFA_Medium -->
-    <path d="M 88.00 288.00 L 780.00 288.00"
+    <path d="M 88.00 288.00 L 174.50 288.00 L 261.00 288.00 L 347.50 288.00 L 434.00 288.00 L 520.50 288.00 L 607.00 288.00 L 693.50 288.00 L 780.00 288.00"
           fill="none" stroke="#009e73" stroke-width="2.5"
           stroke-linejoin="round" stroke-linecap="round"/>
       <circle cx="88.00" cy="288.00" r="4.5"
               fill="#009e73" stroke="white" stroke-width="1.5">
         <title>NFA_Medium @ f73649a: 0</title>
       </circle>
-      <circle cx="780.00" cy="288.00" r="4.5"
+      <circle cx="174.50" cy="288.00" r="4.5"
               fill="#009e73" stroke="white" stroke-width="1.5">
         <title>NFA_Medium @ f73649a: 0</title>
       </circle>
+      <circle cx="261.00" cy="288.00" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="347.50" cy="288.00" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="434.00" cy="288.00" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="520.50" cy="288.00" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="607.00" cy="288.00" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="693.50" cy="288.00" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="780.00" cy="288.00" r="4.5"
+              fill="#009e73" stroke="white" stroke-width="1.5">
+        <title>NFA_Medium @ 9d63c5e: 0</title>
+      </circle>
     <!-- series: DFA_Medium -->
-    <path d="M 88.00 288.00 L 780.00 288.00"
+    <path d="M 88.00 288.00 L 174.50 288.00 L 261.00 288.00 L 347.50 288.00 L 434.00 288.00 L 520.50 288.00 L 607.00 288.00 L 693.50 288.00 L 780.00 288.00"
           fill="none" stroke="#cc79a7" stroke-width="2.5"
           stroke-linejoin="round" stroke-linecap="round"/>
       <circle cx="88.00" cy="288.00" r="4.5"
               fill="#cc79a7" stroke="white" stroke-width="1.5">
         <title>DFA_Medium @ f73649a: 0</title>
       </circle>
-      <circle cx="780.00" cy="288.00" r="4.5"
+      <circle cx="174.50" cy="288.00" r="4.5"
               fill="#cc79a7" stroke="white" stroke-width="1.5">
         <title>DFA_Medium @ f73649a: 0</title>
+      </circle>
+      <circle cx="261.00" cy="288.00" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="347.50" cy="288.00" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="434.00" cy="288.00" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 06d74f8: 0</title>
+      </circle>
+      <circle cx="520.50" cy="288.00" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="607.00" cy="288.00" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="693.50" cy="288.00" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 9d63c5e: 0</title>
+      </circle>
+      <circle cx="780.00" cy="288.00" r="4.5"
+              fill="#cc79a7" stroke="white" stroke-width="1.5">
+        <title>DFA_Medium @ 9d63c5e: 0</title>
       </circle>
 
   <!-- legend -->

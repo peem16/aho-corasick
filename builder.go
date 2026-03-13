@@ -29,7 +29,7 @@ func NewBuilder() *AhoCorasickBuilder {
 		matchKind:  MatchKindStandard,
 		kind:       AhoCorasickKindAuto,
 		prefilter:  true,
-		denseDepth: 2,
+		denseDepth: 10,
 	}
 }
 
@@ -86,7 +86,7 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 	alphabet, useAlpha := buildAlphabet(b.asciiCaseInsensitive)
 
 	// Build NFA (always — DFA is derived from NFA).
-	nfa := buildNFA(patterns, b.matchKind, alphabet, useAlpha)
+	nfa := buildNFA(patterns, b.matchKind, alphabet, useAlpha, b.denseDepth)
 
 	// Decide automaton kind.
 	kind := b.resolveKind(len(patterns))

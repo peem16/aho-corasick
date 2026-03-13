@@ -349,6 +349,20 @@ BenchmarkFindAll_NoPrefilter                           ~155 MB/s
 BenchmarkReplaceAll_1MB                                ~453 MB/s
 ```
 
+### Overlapping benchmark charts
+
+**ns/op** — lower is better
+
+![Overlapping ns/op](scripts/overlapping_ns_per_op.svg)
+
+**bytes/op** — lower is better
+
+![Overlapping bytes/op](scripts/overlapping_bytes_per_op.svg)
+
+**allocs/op** — lower is better
+
+![Overlapping allocs/op](scripts/overlapping_allocs_per_op.svg)
+
 ---
 
 ## UPDATE TEST

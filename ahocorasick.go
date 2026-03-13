@@ -215,17 +215,34 @@ func (ac *AhoCorasick) findStandardNFA(nfa *NFA, haystack []byte, pos int, state
 				tbase := int(transBase[state])
 				tlen := int(transLen[state])
 				tr := transBuf[tbase : tbase+tlen]
-				lo, hi := 0, tlen
-				for lo < hi {
-					mid := int(uint(lo+hi) >> 1)
-					if tr[mid].b < b {
-						lo = mid + 1
-					} else {
-						hi = mid
+				found := false
+				if tlen <= 4 {
+					for i := 0; i < tlen; i++ {
+						if tr[i].b == b {
+							state = tr[i].next
+							found = true
+							break
+						}
+						if tr[i].b > b {
+							break
+						}
+					}
+				} else {
+					lo, hi := 0, tlen
+					for lo < hi {
+						mid := int(uint(lo+hi) >> 1)
+						if tr[mid].b < b {
+							lo = mid + 1
+						} else {
+							hi = mid
+						}
+					}
+					if lo < tlen && tr[lo].b == b {
+						state = tr[lo].next
+						found = true
 					}
 				}
-				if lo < tlen && tr[lo].b == b {
-					state = tr[lo].next
+				if found {
 					break
 				}
 				if states[state].fail == startStateID {

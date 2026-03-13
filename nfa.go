@@ -146,7 +146,7 @@ func (n *NFA) lookup(s stateID, b byte) (stateID, bool) {
 
 // buildNFA constructs an Aho-Corasick NFA from patterns.
 // patterns must not be empty (validated by the caller).
-func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool) *NFA {
+func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool, denseDepth int) *NFA {
 	n := &NFA{
 		matchKind: mk,
 		alphabet:  alphabet,
@@ -259,7 +259,7 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 	n.buildStartTrans()
 
 	// ---- Phase 6: precompute dense tables for shallow states ----
-	n.buildDenseTrans(3) // depth ≤ 3
+	n.buildDenseTrans(uint16(denseDepth))
 
 	// ---- Phase 7: flatten output table ----
 	n.flattenOutputs(tmpOutputs)
@@ -372,6 +372,21 @@ func (n *NFA) buildDenseTrans(maxDepth uint16) {
 	n.denseIdx = make([]int32, numStates)
 	for i := range n.denseIdx {
 		n.denseIdx[i] = -1
+	}
+
+	// Adaptive: reduce depth if memory would exceed 2MB budget.
+	const maxDenseBytes = 2 << 20 // 2MB
+	for maxDepth > 0 {
+		count := 0
+		for s := stateID(2); s < numStates; s++ {
+			if n.states[s].depth <= maxDepth {
+				count++
+			}
+		}
+		if count*256*4 <= maxDenseBytes {
+			break
+		}
+		maxDepth--
 	}
 
 	// Count shallow states (skip dead=0 and start=1).
