@@ -15,12 +15,12 @@ package ahocorasick
 
 // DFA wraps a pre-computed, dense transition table built from an NFA.
 type DFA struct {
-	trans     []stateID    // flat: numStates * 256 entries
-	outputs   [][]PatternID // match output per state (nil if no match)
+	trans     []stateID   // flat: numStates * 256 entries
+	outputs   []PatternID // all output pattern IDs, concatenated
+	outputIdx []int32     // outputIdx[stateID] = base index into outputs; -1 = no match
+	outLen    []int32     // outLen[stateID] = number of outputs for that state
 	matchKind MatchKind
 	numStates int
-	alphabet  [256]byte
-	useAlpha  bool
 }
 
 // ---------------------------------------------------------------------------
@@ -33,21 +33,24 @@ func (d *DFA) isDead(s stateID) bool { return s == deadStateID }
 
 func (d *DFA) matchKindOf() MatchKind { return d.matchKind }
 
-func (d *DFA) isMatch(s stateID) bool { return d.outputs[s] != nil }
+func (d *DFA) isMatch(s stateID) bool { return d.outputIdx[s] >= 0 }
 
-func (d *DFA) matches(s stateID) []PatternID { return d.outputs[s] }
+func (d *DFA) matches(s stateID) []PatternID {
+	idx := d.outputIdx[s]
+	if idx < 0 {
+		return nil
+	}
+	return d.outputs[idx : idx+d.outLen[s]]
+}
 
 // nextState returns the next state from s on byte b.
-// The transition table already encodes failure links, so no loop is needed.
+// The transition table already encodes failure links and alphabet
+// normalisation (baked in at build time), so no loop or runtime
+// byte mapping is needed.
 //
 //go:nosplit
 func (d *DFA) nextState(s stateID, b byte) stateID {
-	if d.useAlpha {
-		b = d.alphabet[b]
-	}
-	// BCE hint: if s is valid, s*256+255 is within bounds.
-	idx := int(s)<<8 | int(b)
-	return d.trans[idx]
+	return d.trans[int(s)<<8|int(b)]
 }
 
 // ---------------------------------------------------------------------------
@@ -64,21 +67,30 @@ func buildDFA(nfa *NFA) *DFA {
 	numStates := len(nfa.states)
 	d := &DFA{
 		trans:     make([]stateID, numStates*256),
-		outputs:   make([][]PatternID, numStates),
+		outputIdx: make([]int32, numStates),
+		outLen:    make([]int32, numStates),
 		matchKind: nfa.matchKind,
 		numStates: numStates,
-		alphabet:  nfa.alphabet,
-		useAlpha:  nfa.useAlpha,
 	}
 
-	// Populate outputs.
+	// Flatten outputs into a contiguous buffer (like NFA).
+	totalOuts := 0
 	for s := 0; s < numStates; s++ {
 		if outs := nfa.matches(stateID(s)); len(outs) > 0 {
-			// Make an independent copy so DFA doesn't alias NFA memory.
-			cp := make([]PatternID, len(outs))
-			copy(cp, outs)
-			d.outputs[s] = cp
+			totalOuts += len(outs)
 		}
+	}
+	d.outputs = make([]PatternID, 0, totalOuts)
+	for s := 0; s < numStates; s++ {
+		outs := nfa.matches(stateID(s))
+		if len(outs) == 0 {
+			d.outputIdx[s] = -1
+			continue
+		}
+		d.outputIdx[s] = int32(len(d.outputs))
+		d.outLen[s] = int32(len(outs))
+		// NFA outputs are already sorted by flattenOutputs; append directly.
+		d.outputs = append(d.outputs, outs...)
 	}
 
 	// Populate transitions.

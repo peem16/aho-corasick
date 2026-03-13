@@ -223,6 +223,174 @@
         "NFA_Medium": 0,
         "NFA_Small": 0
       }
+    },
+    {
+      "label": "6fe6d69",
+      "commit": "6fe6d69",
+      "timestamp": "2026-03-13T07:30:32Z",
+      "run_id": "20260313T073032Z",
+      "ns_per_op": {
+        "DFA_Medium": 343476,
+        "DFA_Small": 301736,
+        "NFA_Medium": 458340,
+        "NFA_Small": 382518
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 1,
+        "DFA_Small": 1,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "6fe6d69",
+      "commit": "6fe6d69",
+      "timestamp": "2026-03-13T07:59:44Z",
+      "run_id": "20260313T075944Z",
+      "ns_per_op": {
+        "DFA_Medium": 333971,
+        "DFA_Small": 299754,
+        "NFA_Medium": 454073,
+        "NFA_Small": 374657
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 1,
+        "DFA_Small": 1,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "6fe6d69",
+      "commit": "6fe6d69",
+      "timestamp": "2026-03-13T08:06:11Z",
+      "run_id": "20260313T080611Z",
+      "ns_per_op": {
+        "DFA_Medium": 570164,
+        "DFA_Small": 300688,
+        "NFA_Medium": 788791,
+        "NFA_Small": 378571
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 1,
+        "DFA_Small": 1,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "6fe6d69",
+      "commit": "6fe6d69",
+      "timestamp": "2026-03-13T08:21:12Z",
+      "run_id": "20260313T082112Z",
+      "ns_per_op": {
+        "DFA_Medium": 333992,
+        "DFA_Small": 302516,
+        "NFA_Medium": 762791,
+        "NFA_Small": 385757
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 1,
+        "DFA_Small": 1,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "6fe6d69",
+      "commit": "6fe6d69",
+      "timestamp": "2026-03-13T08:30:32Z",
+      "run_id": "20260313T083032Z",
+      "ns_per_op": {
+        "DFA_Medium": 331003,
+        "DFA_Small": 297598,
+        "NFA_Medium": 451453,
+        "NFA_Small": 371383
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 1,
+        "DFA_Small": 1,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "6fe6d69",
+      "commit": "6fe6d69",
+      "timestamp": "2026-03-13T10:18:00Z",
+      "run_id": "20260313T101800Z",
+      "ns_per_op": {
+        "DFA_Medium": 330019,
+        "DFA_Small": 298288,
+        "NFA_Medium": 449530,
+        "NFA_Small": 372200
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 1,
+        "DFA_Small": 1,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
+    },
+    {
+      "label": "6fe6d69",
+      "commit": "6fe6d69",
+      "timestamp": "2026-03-13T11:25:57Z",
+      "run_id": "20260313T112557Z",
+      "ns_per_op": {
+        "DFA_Medium": 331662,
+        "DFA_Small": 295830,
+        "NFA_Medium": 448363,
+        "NFA_Small": 373291
+      },
+      "bytes_per_op": {
+        "DFA_Medium": 1,
+        "DFA_Small": 1,
+        "NFA_Medium": 1,
+        "NFA_Small": 1
+      },
+      "allocs_per_op": {
+        "DFA_Medium": 0,
+        "DFA_Small": 0,
+        "NFA_Medium": 0,
+        "NFA_Small": 0
+      }
     }
   ]
 }
