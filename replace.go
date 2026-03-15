@@ -42,8 +42,11 @@ func (ac *AhoCorasick) ReplaceAllWith(haystack []byte, f func(Match) []byte) []b
 		return cp
 	}
 
-	// Pre-allocate output with same capacity as haystack.
-	out := make([]byte, 0, len(haystack))
+	// Pre-allocate output with extra headroom for replacements.
+	// Adding 25% avoids re-allocation when replacements are slightly
+	// larger than the matched text.
+	cap := len(haystack) + len(haystack)/4
+	out := make([]byte, 0, cap)
 	prev := 0 // end of last match in haystack
 
 	it := ac.FindIter(haystack)

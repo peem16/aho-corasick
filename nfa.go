@@ -110,10 +110,15 @@ func (n *NFA) nextState(s stateID, b byte) stateID {
 			return next
 		}
 		// Failure link reached start → use dense table.
-		if n.states[s].fail == startStateID {
+		fail := n.states[s].fail
+		if fail == startStateID {
 			return n.startTrans[b]
 		}
-		s = n.states[s].fail
+		// Check if failure state has a dense table — O(1) resolve.
+		if di := n.denseIdx[fail]; di >= 0 {
+			return n.denseTrans[int(di)<<8|int(b)]
+		}
+		s = fail
 	}
 }
 
@@ -211,9 +216,8 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 		}
 	}
 
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
+	for qi := 0; qi < len(queue); qi++ {
+		cur := queue[qi]
 
 		for _, tr := range tmpTrans[cur] {
 			b := tr.b
@@ -305,21 +309,42 @@ func addTransTmp(tr []nfaTrans, b byte, next stateID) []nfaTrans {
 // "in the middle" of matching a longer pattern don't report a shorter
 // sub-match prematurely (LeftmostFirst) or continue past a finished
 // match (LeftmostLongest).
+//
+// Instead of inserting dead transitions one-by-one (O(256²) per state
+// due to sorted insert + shift), we build a full 256-entry transition
+// array in one pass and replace the old transition slice entirely.
 func addDeadTransitions(states []nfaState, tmpTrans [][]nfaTrans, tmpOutputs [][]PatternID) {
 	for s := stateID(1); int(s) < len(states); s++ {
 		if len(tmpOutputs[s]) == 0 {
 			continue
 		}
-		present := make(map[byte]bool, len(tmpTrans[s]))
-		for _, tr := range tmpTrans[s] {
+		existing := tmpTrans[s]
+		nExisting := len(existing)
+
+		// Mark which bytes already have transitions.
+		var present [256]bool
+		for _, tr := range existing {
 			present[tr.b] = true
 		}
+
+		// Count missing bytes.
+		nMissing := 256 - nExisting
+
+		// Merge existing + dead transitions in byte order into a single
+		// pre-allocated slice. This avoids both the O(n²) sorted-insert
+		// of the old approach and the 256-entry bloat of a full expansion.
+		merged := make([]nfaTrans, 0, nExisting+nMissing)
+		ei := 0 // index into existing (which is sorted by b)
 		for b := 0; b < 256; b++ {
-			if present[byte(b)] {
-				continue
+			bb := byte(b)
+			if present[bb] {
+				merged = append(merged, existing[ei])
+				ei++
+			} else {
+				merged = append(merged, nfaTrans{b: bb, next: deadStateID})
 			}
-			tmpTrans[s] = addTransTmp(tmpTrans[s], byte(b), deadStateID)
 		}
+		tmpTrans[s] = merged
 	}
 }
 
@@ -454,7 +479,20 @@ func (n *NFA) flattenOutputs(tmp [][]PatternID) {
 			continue
 		}
 		// Sort for determinism (LeftmostFirst expects lowest PatternID first).
-		sort.Slice(outs, func(i, j int) bool { return outs[i] < outs[j] })
+		// Use insertion sort for small slices to avoid sort.Slice overhead.
+		if len(outs) <= 8 {
+			for i := 1; i < len(outs); i++ {
+				key := outs[i]
+				j := i - 1
+				for j >= 0 && outs[j] > key {
+					outs[j+1] = outs[j]
+					j--
+				}
+				outs[j+1] = key
+			}
+		} else {
+			sort.Slice(outs, func(i, j int) bool { return outs[i] < outs[j] })
+		}
 		n.states[s].outputIdx = int32(len(n.outputs))
 		n.outLen[s] = int32(len(outs))
 		n.outputs = append(n.outputs, outs...)
