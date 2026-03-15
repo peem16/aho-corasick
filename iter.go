@@ -234,16 +234,16 @@ func (it *FindIter) nextDFA() (Match, bool) {
 	pf := it.ac.pf
 
 	trans := dfa.trans
-	outputIdx := dfa.outputIdx
-	outputs := dfa.outputs
+	outBase := dfa.outBase
+	outBuf := dfa.outBuf
 
 	pos := it.pos
 	state := it.state
 	n := len(hay)
 
 	// Check for a match at the current position.
-	if outputIdx[state] >= 0 {
-		pid := outputs[outputIdx[state]]
+	if outBase[state] >= 0 {
+		pid := outBuf[outBase[state]]
 		patLen := int(patLens[pid])
 		start := pos - patLen
 		if start < 0 {
@@ -281,8 +281,8 @@ func (it *FindIter) nextDFA() (Match, bool) {
 		pos++
 		state = trans[int(state)<<8|int(b)]
 
-		if outputIdx[state] >= 0 {
-			pid := outputs[outputIdx[state]]
+		if outBase[state] >= 0 {
+			pid := outBuf[outBase[state]]
 			patLen := int(patLens[pid])
 			m := Match{id: pid, start: pos - patLen, end: pos}
 			it.pos = m.end
@@ -322,22 +322,22 @@ var findOverlappingIterPool = sync.Pool{
 // This is only meaningful when the automaton was built with MatchKindStandard.
 // For Leftmost* semantics it behaves identically to FindIter.
 type FindOverlappingIter struct {
-	ac         *AhoCorasick
-	nfa        *NFA    // cached NFA pointer; nil when using DFA
-	dfa        *DFA    // cached DFA pointer; nil when using NFA
-	haystack   []byte
-	pos        int     // current byte position in haystack
-	state      stateID // current automaton state
-	matchIdx   int     // index into current state's match list
-	done       bool
+	ac       *AhoCorasick
+	nfa      *NFA // cached NFA pointer; nil when using DFA
+	dfa      *DFA // cached DFA pointer; nil when using NFA
+	haystack []byte
+	pos      int     // current byte position in haystack
+	state    stateID // current automaton state
+	matchIdx int     // index into current state's match list
+	done     bool
 }
 
 // newFindOverlappingIter acquires a FindOverlappingIter from the pool.
 func newFindOverlappingIter(ac *AhoCorasick, haystack []byte) *FindOverlappingIter {
 	it := findOverlappingIterPool.Get().(*FindOverlappingIter)
 	it.ac = ac
-	it.nfa, _ = ac.imp.(*NFA) // cache type assertion; nil if DFA
-	it.dfa, _ = ac.imp.(*DFA)
+	it.nfa = ac.nfa // use cached pointer; nil if DFA
+	it.dfa = ac.dfa // use cached pointer; nil if NFA
 	it.haystack = haystack
 	it.pos = 0
 	it.state = startStateID
@@ -517,25 +517,29 @@ func (it *FindOverlappingIter) nextNFA() (Match, bool) {
 	return Match{}, false
 }
 
-// nextDFA is a specialized inlined DFA path for FindOverlappingIter.
+// nextDFA is the specialized hot path for DFA overlapping iteration.
+// All DFA field accesses are inlined to eliminate interface dispatch and
+// allow the compiler to keep the transition table pointer in a register.
 func (it *FindOverlappingIter) nextDFA() (Match, bool) {
 	dfa := it.dfa
 	hay := it.haystack
 	patLens := it.ac.patLens
 	pf := it.ac.pf
 
+	// Cache DFA fields as locals for register allocation.
 	trans := dfa.trans
-	outputIdx := dfa.outputIdx
+	outBase := dfa.outBase
+	outBuf := dfa.outBuf
 	outLen := dfa.outLen
-	outputs := dfa.outputs
+	useAlpha := dfa.useAlpha
 
 	// Drain remaining matches from the current state.
 	if it.matchIdx > 0 {
-		oIdx := outputIdx[it.state]
-		if oIdx >= 0 {
+		base := outBase[it.state]
+		if base >= 0 {
 			olen := outLen[it.state]
 			if int32(it.matchIdx) < olen {
-				pid := outputs[oIdx+int32(it.matchIdx)]
+				pid := outBuf[base+int32(it.matchIdx)]
 				m := Match{
 					id:    pid,
 					start: it.pos - int(patLens[pid]),
@@ -556,9 +560,11 @@ func (it *FindOverlappingIter) nextDFA() (Match, bool) {
 		return Match{}, false
 	}
 
-	_ = hay[n-1] // BCE hint
+	// BCE hint.
+	_ = hay[n-1]
 
 	for pos < n {
+		// Prefilter: skip ahead when at start state.
 		if pf.enabled && state == startStateID {
 			next := pf.next(hay, pos)
 			if next < 0 {
@@ -572,10 +578,14 @@ func (it *FindOverlappingIter) nextDFA() (Match, bool) {
 
 		b := hay[pos]
 		pos++
+		if useAlpha {
+			b = dfa.alphabet[b]
+		}
+		// O(1) DFA transition — no failure links needed.
 		state = trans[int(state)<<8|int(b)]
 
-		if outputIdx[state] >= 0 {
-			pid := outputs[outputIdx[state]]
+		if base := outBase[state]; base >= 0 {
+			pid := outBuf[base]
 			m := Match{
 				id:    pid,
 				start: pos - int(patLens[pid]),

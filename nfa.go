@@ -17,13 +17,13 @@ type nfaTrans struct {
 }
 
 // nfaState holds the per-state metadata for the NFA.
-// Fields are ordered to minimise padding and keep the hottest ones
-// (fail, outputIdx) in the first cache-word.
+// Fields are ordered to keep the hottest search-path fields (fail, outputIdx)
+// packed into 8 bytes so that more states fit per cache line.
+// depth is intentionally excluded: it is only needed during build and is
+// passed as a separate temporary slice to avoid polluting the search cache.
 type nfaState struct {
 	fail      stateID // failure (fall-back) link
 	outputIdx int32   // index into NFA.outputBase; -1 = no match
-	depth     uint16  // depth in the trie (used for denseDepth threshold)
-	_         [2]byte // pad to 16 bytes
 }
 
 // NFA is an Aho-Corasick Non-deterministic Finite Automaton.
@@ -43,6 +43,10 @@ type nfaState struct {
 // tables (like a partial DFA). This eliminates binary search and failure-link
 // traversal for the most frequently visited states while keeping memory
 // usage proportional to the number of shallow states, not all states.
+//
+// Note: nfaState deliberately omits the trie depth field.  Depth is only
+// needed during construction (buildDenseTrans) and is passed as a temporary
+// []uint16 to avoid inflating the hot struct and wasting cache capacity.
 type NFA struct {
 	states     []nfaState
 	transBuf   []nfaTrans  // all transitions concatenated
@@ -162,6 +166,10 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 	// then flatten into contiguous transBuf at the end.
 	tmpTrans := make([][]nfaTrans, 2)
 
+	// tmpDepths tracks trie depth per state during construction.
+	// Kept separate from nfaState to keep the hot struct small (8 bytes).
+	tmpDepths := make([]uint16, 2)
+
 	// ---- Phase 1: build trie (goto function) ----
 	// Reserve state 0 (dead) and state 1 (start).
 	n.states = make([]nfaState, 2)
@@ -187,10 +195,8 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 			if !ok {
 				// Allocate a new state.
 				newID := stateID(len(n.states))
-				n.states = append(n.states, nfaState{
-					outputIdx: -1,
-					depth:     uint16(depth + 1),
-				})
+				n.states = append(n.states, nfaState{outputIdx: -1})
+				tmpDepths = append(tmpDepths, uint16(depth+1))
 				tmpTrans = append(tmpTrans, nil)
 				tmpOutputs = append(tmpOutputs, nil)
 				tmpTrans[cur] = addTransTmp(tmpTrans[cur], b, newID)
@@ -263,7 +269,7 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 	n.buildStartTrans()
 
 	// ---- Phase 6: precompute dense tables for shallow states ----
-	n.buildDenseTrans(uint16(denseDepth))
+	n.buildDenseTrans(uint16(denseDepth), tmpDepths)
 
 	// ---- Phase 7: flatten output table ----
 	n.flattenOutputs(tmpOutputs)
@@ -310,41 +316,33 @@ func addTransTmp(tr []nfaTrans, b byte, next stateID) []nfaTrans {
 // sub-match prematurely (LeftmostFirst) or continue past a finished
 // match (LeftmostLongest).
 //
-// Instead of inserting dead transitions one-by-one (O(256²) per state
-// due to sorted insert + shift), we build a full 256-entry transition
-// array in one pass and replace the old transition slice entirely.
+// Optimized: O(256) merge instead of O(n²) repeated sorted insertion.
+// Since existing transitions are already sorted, we merge-scan in one pass
+// and build a complete 256-entry list directly.
 func addDeadTransitions(states []nfaState, tmpTrans [][]nfaTrans, tmpOutputs [][]PatternID) {
 	for s := stateID(1); int(s) < len(states); s++ {
 		if len(tmpOutputs[s]) == 0 {
 			continue
 		}
 		existing := tmpTrans[s]
-		nExisting := len(existing)
-
-		// Mark which bytes already have transitions.
-		var present [256]bool
-		for _, tr := range existing {
-			present[tr.b] = true
+		if len(existing) == 256 {
+			// Already has transitions for every byte — nothing to add.
+			continue
 		}
-
-		// Count missing bytes.
-		nMissing := 256 - nExisting
-
-		// Merge existing + dead transitions in byte order into a single
-		// pre-allocated slice. This avoids both the O(n²) sorted-insert
-		// of the old approach and the 256-entry bloat of a full expansion.
-		merged := make([]nfaTrans, 0, nExisting+nMissing)
-		ei := 0 // index into existing (which is sorted by b)
+		// Build a full 256-entry sorted transition list by merging existing
+		// (sorted) transitions with dead-state fillers, in O(256) time.
+		newTrans := make([]nfaTrans, 0, 256)
+		ei := 0
 		for b := 0; b < 256; b++ {
 			bb := byte(b)
-			if present[bb] {
-				merged = append(merged, existing[ei])
+			if ei < len(existing) && existing[ei].b == bb {
+				newTrans = append(newTrans, existing[ei])
 				ei++
 			} else {
-				merged = append(merged, nfaTrans{b: bb, next: deadStateID})
+				newTrans = append(newTrans, nfaTrans{b: bb, next: deadStateID})
 			}
 		}
-		tmpTrans[s] = merged
+		tmpTrans[s] = newTrans
 	}
 }
 
@@ -392,35 +390,34 @@ func (n *NFA) buildStartTrans() {
 // at depth ≤ maxDepth (excluding start state, which has its own table).
 // This turns binary-search + failure-link traversal into a single O(1) lookup
 // for the most frequently visited states.
-func (n *NFA) buildDenseTrans(maxDepth uint16) {
+func (n *NFA) buildDenseTrans(maxDepth uint16, depths []uint16) {
 	numStates := stateID(len(n.states))
 	n.denseIdx = make([]int32, numStates)
 	for i := range n.denseIdx {
 		n.denseIdx[i] = -1
 	}
 
-	// Adaptive: reduce depth if memory would exceed 2MB budget.
+	// Adaptive: reduce maxDepth if memory would exceed 2MB budget.
+	// O(S) single pass: count states per depth, then prefix-sum.
 	const maxDenseBytes = 2 << 20 // 2MB
-	for maxDepth > 0 {
-		count := 0
-		for s := stateID(2); s < numStates; s++ {
-			if n.states[s].depth <= maxDepth {
-				count++
-			}
+	const maxTrackedDepth = 256   // depths beyond this are never densified
+	var cumByDepth [maxTrackedDepth + 1]int32
+	for s := stateID(2); s < numStates; s++ {
+		d := depths[s]
+		if d <= maxTrackedDepth {
+			cumByDepth[d]++
 		}
-		if count*256*4 <= maxDenseBytes {
-			break
-		}
+	}
+	// Convert to prefix sums: cumByDepth[d] = #states at depth ≤ d.
+	for d := 1; d <= maxTrackedDepth; d++ {
+		cumByDepth[d] += cumByDepth[d-1]
+	}
+	// Find the largest depth ≤ maxDepth that fits in budget.
+	for maxDepth > 0 && int(cumByDepth[maxDepth])*256*4 > maxDenseBytes {
 		maxDepth--
 	}
 
-	// Count shallow states (skip dead=0 and start=1).
-	denseCount := 0
-	for s := stateID(2); s < numStates; s++ {
-		if n.states[s].depth <= maxDepth {
-			denseCount++
-		}
-	}
+	denseCount := int(cumByDepth[maxDepth])
 	if denseCount == 0 {
 		return
 	}
@@ -428,7 +425,7 @@ func (n *NFA) buildDenseTrans(maxDepth uint16) {
 	n.denseTrans = make([]stateID, denseCount*256)
 	idx := int32(0)
 	for s := stateID(2); s < numStates; s++ {
-		if n.states[s].depth > maxDepth {
+		if depths[s] > maxDepth {
 			continue
 		}
 		n.denseIdx[s] = idx

@@ -85,11 +85,17 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 	// Build alphabet (byte normalisation table).
 	alphabet, useAlpha := buildAlphabet(b.asciiCaseInsensitive)
 
+	// Pre-compute pattern lengths for resolveKind memory heuristic.
+	patLens := make([]int32, len(patterns))
+	for i, p := range patterns {
+		patLens[i] = int32(len(p))
+	}
+
 	// Build NFA (always — DFA is derived from NFA).
 	nfa := buildNFA(patterns, b.matchKind, alphabet, useAlpha, b.denseDepth)
 
 	// Decide automaton kind.
-	kind := b.resolveKind(len(patterns))
+	kind := b.resolveKind(len(patterns), patLens)
 
 	var imp automaton
 	switch kind {
@@ -109,16 +115,20 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 
 	// Deep-copy patterns so the caller can safely reuse their slice.
 	patsCopy := make([][]byte, len(patterns))
-	patLens := make([]int32, len(patterns))
 	for i, p := range patterns {
 		cp := make([]byte, len(p))
 		copy(cp, p)
 		patsCopy[i] = cp
-		patLens[i] = int32(len(p))
 	}
+
+	// Cache typed pointers to avoid repeated type assertions in hot paths.
+	acNFA, _ := imp.(*NFA)
+	acDFA, _ := imp.(*DFA)
 
 	return &AhoCorasick{
 		imp:       imp,
+		nfa:       acNFA,
+		dfa:       acDFA,
 		pf:        pf,
 		matchKind: b.matchKind,
 		kind:      kind,
@@ -129,13 +139,28 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 }
 
 // resolveKind picks the concrete automaton kind when AhoCorasickKindAuto.
-func (b *AhoCorasickBuilder) resolveKind(numPatterns int) AhoCorasickKind {
+//
+// For Standard semantics, we estimate DFA memory as:
+//   sum(patternLengths) × 256 transitions × 4 bytes per stateID
+//
+// This bounds the trie state count from above (shared prefixes reduce it
+// further).  We prefer DFA when the estimate is within 50 MB because the
+// O(1) lookup is faster than NFA binary search + failure-link traversal.
+func (b *AhoCorasickBuilder) resolveKind(numPatterns int, patLens []int32) AhoCorasickKind {
 	if b.kind != AhoCorasickKindAuto {
 		return b.kind
 	}
-	// Heuristic: use DFA for leftmost semantics or small pattern sets,
-	// use NFA for larger sets to save memory.
-	if b.matchKind != MatchKindStandard || numPatterns <= 10 {
+	// Leftmost semantics always use DFA (dead-state transitions require it).
+	if b.matchKind != MatchKindStandard {
+		return AhoCorasickKindDFA
+	}
+	// Estimate DFA memory from total pattern bytes × 256 × 4.
+	var totalLen int64
+	for _, l := range patLens {
+		totalLen += int64(l)
+	}
+	const dfaMemLimit = 50 << 20 // 50 MB
+	if totalLen*256*4 <= dfaMemLimit {
 		return AhoCorasickKindDFA
 	}
 	return AhoCorasickKindContiguousNFA

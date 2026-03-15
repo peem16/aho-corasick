@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(wc -l /d/Work/aho-corasick/*.go)",
       "Bash(go test:*)"
     ]
   }
