@@ -1,0 +1,32 @@
+goos: windows
+goarch: amd64
+pkg: github.com/peem16/aho-corasick
+cpu: Intel(R) Core(TM) i7-14700KF
+BenchmarkCaseInsensitive_DFA_Small_1MB-28     	     502	   2435504 ns/op	 430.54 MB/s	 2536267 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28     	     306	   4654310 ns/op	 225.29 MB/s	 2536368 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28     	     253	   4667782 ns/op	 224.64 MB/s	 2536220 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28     	     249	   4734315 ns/op	 221.48 MB/s	 2536254 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28     	     254	   4716067 ns/op	 222.34 MB/s	 2536410 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28    	       6	 196276850 ns/op	   5.34 MB/s	 1946920 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28    	       6	 195989800 ns/op	   5.35 MB/s	 1946928 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28    	       6	 194579583 ns/op	   5.39 MB/s	 1946928 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28    	       6	 195218033 ns/op	   5.37 MB/s	 1946928 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28    	       6	 198637117 ns/op	   5.28 MB/s	 1946928 B/op	      20 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28           	     256	   4615792 ns/op	 227.17 MB/s	 2536370 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28           	     256	   4590938 ns/op	 228.40 MB/s	 2536322 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28           	     264	   4645334 ns/op	 225.73 MB/s	 2536231 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28           	     255	   4628917 ns/op	 226.53 MB/s	 2536326 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28           	     262	   4617956 ns/op	 227.06 MB/s	 2536238 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28       	     174	   6897560 ns/op	 152.02 MB/s	 2536319 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28       	     175	   7027685 ns/op	 149.21 MB/s	 2536243 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28       	     175	   6834827 ns/op	 153.42 MB/s	 2536243 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28       	     176	   6838446 ns/op	 153.34 MB/s	 2536472 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28       	     169	   6909778 ns/op	 151.75 MB/s	 2536347 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28     	     181	   6757960 ns/op	 155.16 MB/s	 2536239 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28     	     174	   6554997 ns/op	 159.97 MB/s	 2536343 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28     	     178	   6598676 ns/op	 158.91 MB/s	 2536230 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28     	     177	   6646182 ns/op	 157.77 MB/s	 2536559 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28     	     176	   6698711 ns/op	 156.53 MB/s	 2536333 B/op	      21 allocs/op
+PASS
+ok  	github.com/peem16/aho-corasick	44.702s
+?   	github.com/peem16/aho-corasick/tools/bench2json	[no test files]

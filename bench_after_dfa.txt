@@ -1,0 +1,232 @@
+goos: windows
+goarch: amd64
+pkg: github.com/peem16/aho-corasick
+cpu: Intel(R) Core(TM) i7-14700KF
+BenchmarkFindOverlapping_NFA_Small_1MB-28            	    3224	    382308 ns/op	2742.75 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Small_1MB-28            	    3165	    373496 ns/op	2807.46 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Small_1MB-28            	    3223	    373069 ns/op	2810.68 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Small_1MB-28            	    3212	    372316 ns/op	2816.36 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Small_1MB-28            	    3189	    372009 ns/op	2818.68 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Small_1MB-28            	    4012	    299205 ns/op	3504.53 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Small_1MB-28            	    4039	    339560 ns/op	3088.04 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Small_1MB-28            	    3421	    300401 ns/op	3490.59 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Small_1MB-28            	    3519	    648067 ns/op	1618.01 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Small_1MB-28            	    1812	    649131 ns/op	1615.35 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Medium_1MB-28           	    1502	    799477 ns/op	1311.58 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Medium_1MB-28           	    1496	    796000 ns/op	1317.31 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Medium_1MB-28           	    1513	    798094 ns/op	1313.85 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Medium_1MB-28           	    1496	    799730 ns/op	1311.16 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_Medium_1MB-28           	    1510	    804884 ns/op	1302.77 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Medium_1MB-28           	    2102	    570956 ns/op	1836.53 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Medium_1MB-28           	    2086	    570900 ns/op	1836.71 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Medium_1MB-28           	    2110	    572445 ns/op	1831.75 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Medium_1MB-28           	    2074	    573120 ns/op	1829.59 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindOverlapping_DFA_Medium_1MB-28           	    2116	    571728 ns/op	1834.05 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Small_1MB-28                   	    1854	    646043 ns/op	1623.07 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Small_1MB-28                   	    1814	    650526 ns/op	1611.89 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Small_1MB-28                   	    1866	    644961 ns/op	1625.80 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Small_1MB-28                   	    1855	    650193 ns/op	1612.72 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Small_1MB-28                   	    1864	    644555 ns/op	1626.82 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Small_1MB-28                   	    2359	    564979 ns/op	1855.95 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Small_1MB-28                   	    2630	    562493 ns/op	1864.16 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Small_1MB-28                   	    2094	    563494 ns/op	1860.85 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Small_1MB-28                   	    2144	    561208 ns/op	1868.43 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Small_1MB-28                   	    2142	    563650 ns/op	1860.33 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Medium_1MB-28                  	    2085	    576164 ns/op	1819.92 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Medium_1MB-28                  	    2079	    578225 ns/op	1813.44 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Medium_1MB-28                  	    2076	    574161 ns/op	1826.28 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Medium_1MB-28                  	    2001	    575652 ns/op	1821.55 MB/s	       2 B/op	       0 allocs/op
+BenchmarkFindIter_NFA_Medium_1MB-28                  	    2115	    575364 ns/op	1822.46 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Medium_1MB-28                  	    2938	    412480 ns/op	2542.13 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Medium_1MB-28                  	    2928	    414125 ns/op	2532.03 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Medium_1MB-28                  	    2896	    413462 ns/op	2536.09 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Medium_1MB-28                  	    2926	    412969 ns/op	2539.12 MB/s	       1 B/op	       0 allocs/op
+BenchmarkFindIter_DFA_Medium_1MB-28                  	    2922	    411858 ns/op	2545.96 MB/s	       1 B/op	       0 allocs/op
+BenchmarkReplaceAllWith_Small_1MB-28                 	     838	   1507713 ns/op	 695.47 MB/s	 2492985 B/op	   23390 allocs/op
+BenchmarkReplaceAllWith_Small_1MB-28                 	     844	   1442674 ns/op	 726.83 MB/s	 2492927 B/op	   23390 allocs/op
+BenchmarkReplaceAllWith_Small_1MB-28                 	     860	   1487586 ns/op	 704.88 MB/s	 2492926 B/op	   23390 allocs/op
+BenchmarkReplaceAllWith_Small_1MB-28                 	     854	   1501758 ns/op	 698.23 MB/s	 2492954 B/op	   23390 allocs/op
+BenchmarkReplaceAllWith_Small_1MB-28                 	     840	   1398153 ns/op	 749.97 MB/s	 2492956 B/op	   23390 allocs/op
+BenchmarkReplaceAllWith_Medium_1MB-28                	     825	   1438219 ns/op	 729.08 MB/s	 2653621 B/op	   17835 allocs/op
+BenchmarkReplaceAllWith_Medium_1MB-28                	     770	   1413371 ns/op	 741.90 MB/s	 2653626 B/op	   17835 allocs/op
+BenchmarkReplaceAllWith_Medium_1MB-28                	     837	   1411844 ns/op	 742.70 MB/s	 2653636 B/op	   17835 allocs/op
+BenchmarkReplaceAllWith_Medium_1MB-28                	     804	   1376727 ns/op	 761.64 MB/s	 2653652 B/op	   17835 allocs/op
+BenchmarkReplaceAllWith_Medium_1MB-28                	     829	   1344085 ns/op	 780.14 MB/s	 2653642 B/op	   17835 allocs/op
+BenchmarkCaseInsensitive_NFA_Small_1MB-28            	     460	   2637246 ns/op	 397.60 MB/s	 2536242 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_NFA_Small_1MB-28            	     472	   2603689 ns/op	 402.73 MB/s	 2536237 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_NFA_Small_1MB-28            	     456	   2615232 ns/op	 400.95 MB/s	 2536285 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_NFA_Small_1MB-28            	     452	   2652520 ns/op	 395.31 MB/s	 2536312 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_NFA_Small_1MB-28            	     463	   2634670 ns/op	 397.99 MB/s	 2536227 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28            	     506	   2339343 ns/op	 448.24 MB/s	 2536236 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28            	     480	   2352051 ns/op	 445.81 MB/s	 2536222 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28            	     524	   2355750 ns/op	 445.11 MB/s	 2536214 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28            	     519	   2369567 ns/op	 442.52 MB/s	 2536230 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_DFA_Small_1MB-28            	     512	   2331732 ns/op	 449.70 MB/s	 2536282 B/op	      21 allocs/op
+BenchmarkCaseInsensitive_NFA_Medium_1MB-28           	       6	 196443500 ns/op	   5.34 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_NFA_Medium_1MB-28           	       6	 196121783 ns/op	   5.35 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_NFA_Medium_1MB-28           	       6	 194807967 ns/op	   5.38 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_NFA_Medium_1MB-28           	       6	 199333150 ns/op	   5.26 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_NFA_Medium_1MB-28           	       6	 172196400 ns/op	   6.09 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28           	       9	 131911400 ns/op	   7.95 MB/s	 1946471 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28           	       6	 200728867 ns/op	   5.22 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28           	       6	 197213000 ns/op	   5.32 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28           	       6	 194321650 ns/op	   5.40 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkCaseInsensitive_DFA_Medium_1MB-28           	       6	 190828833 ns/op	   5.49 MB/s	 1946930 B/op	      20 allocs/op
+BenchmarkScaling_DFA_Small_100Matches-28             	  480788	      2611 ns/op	7806.58 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_DFA_Small_100Matches-28             	  532587	      4040 ns/op	5043.93 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_DFA_Small_100Matches-28             	  248346	      4903 ns/op	4157.05 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_DFA_Small_100Matches-28             	  247857	      4978 ns/op	4094.18 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_DFA_Small_100Matches-28             	  246462	      4871 ns/op	4183.61 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_DFA_Small_1000Matches-28            	   22756	     51340 ns/op	3969.61 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_DFA_Small_1000Matches-28            	   45739	     26938 ns/op	7565.59 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_DFA_Small_1000Matches-28            	   48698	     26687 ns/op	7636.61 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_DFA_Small_1000Matches-28            	   25555	     43167 ns/op	4721.19 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_DFA_Small_1000Matches-28            	   44264	     32729 ns/op	6226.96 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_DFA_Small_10000Matches-28           	    2163	    629924 ns/op	3235.31 MB/s	 1479088 B/op	      19 allocs/op
+BenchmarkScaling_DFA_Small_10000Matches-28           	    2011	    638626 ns/op	3191.22 MB/s	 1479092 B/op	      19 allocs/op
+BenchmarkScaling_DFA_Small_10000Matches-28           	    1920	    647576 ns/op	3147.12 MB/s	 1479092 B/op	      19 allocs/op
+BenchmarkScaling_DFA_Small_10000Matches-28           	    1930	    675528 ns/op	3016.90 MB/s	 1479096 B/op	      19 allocs/op
+BenchmarkScaling_DFA_Small_10000Matches-28           	    1712	    638440 ns/op	3192.16 MB/s	 1479095 B/op	      19 allocs/op
+BenchmarkScaling_NFA_Small_100Matches-28             	  209853	      5370 ns/op	3795.32 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_NFA_Small_100Matches-28             	  221649	      5445 ns/op	3742.64 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_NFA_Small_100Matches-28             	  226624	      5372 ns/op	3794.04 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_NFA_Small_100Matches-28             	  224202	      5321 ns/op	3829.84 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_NFA_Small_100Matches-28             	  226946	      5357 ns/op	3804.15 MB/s	    6098 B/op	       7 allocs/op
+BenchmarkScaling_NFA_Small_1000Matches-28            	   21720	     56667 ns/op	3596.46 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_NFA_Small_1000Matches-28            	   21282	     56419 ns/op	3612.28 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_NFA_Small_1000Matches-28            	   21678	     56456 ns/op	3609.89 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_NFA_Small_1000Matches-28            	   20860	     55253 ns/op	3688.52 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_NFA_Small_1000Matches-28            	   21123	     56832 ns/op	3586.04 MB/s	   77802 B/op	      11 allocs/op
+BenchmarkScaling_NFA_Small_10000Matches-28           	    1782	    660017 ns/op	3087.80 MB/s	 1479087 B/op	      19 allocs/op
+BenchmarkScaling_NFA_Small_10000Matches-28           	    1899	    654682 ns/op	3112.96 MB/s	 1479095 B/op	      19 allocs/op
+BenchmarkScaling_NFA_Small_10000Matches-28           	    1837	    662148 ns/op	3077.86 MB/s	 1479094 B/op	      19 allocs/op
+BenchmarkScaling_NFA_Small_10000Matches-28           	    1881	    661050 ns/op	3082.98 MB/s	 1479097 B/op	      19 allocs/op
+BenchmarkScaling_NFA_Small_10000Matches-28           	    1812	    686582 ns/op	2968.33 MB/s	 1479091 B/op	      19 allocs/op
+BenchmarkFindOverlapping_NFA_1000Patterns_1MB-28     	    1197	    991945 ns/op	1057.09 MB/s	       3 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_1000Patterns_1MB-28     	    1198	    992085 ns/op	1056.94 MB/s	       3 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_1000Patterns_1MB-28     	    1207	    991363 ns/op	1057.71 MB/s	       3 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_1000Patterns_1MB-28     	    1250	    994420 ns/op	1054.46 MB/s	       3 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_1000Patterns_1MB-28     	    1198	   1000492 ns/op	1048.06 MB/s	       3 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_5000Patterns_1MB-28     	    1016	   1180917 ns/op	 887.93 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_5000Patterns_1MB-28     	    1024	   1181389 ns/op	 887.58 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_5000Patterns_1MB-28     	    1028	   1183309 ns/op	 886.14 MB/s	       3 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_5000Patterns_1MB-28     	    1000	   1191738 ns/op	 879.87 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_5000Patterns_1MB-28     	     986	   1188881 ns/op	 881.99 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_10000Patterns_1MB-28    	     975	   1218573 ns/op	 860.50 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_10000Patterns_1MB-28    	     975	   1217022 ns/op	 861.59 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_10000Patterns_1MB-28    	     972	   1230695 ns/op	 852.02 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_10000Patterns_1MB-28    	     963	   1229370 ns/op	 852.94 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindOverlapping_NFA_10000Patterns_1MB-28    	     972	   1225742 ns/op	 855.46 MB/s	       4 B/op	       0 allocs/op
+BenchmarkFindAll_NFA_1000Patterns_1MB-28             	    1335	    897336 ns/op	1168.54 MB/s	 1946143 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_1000Patterns_1MB-28             	    1641	    677585 ns/op	1547.52 MB/s	 1946137 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_1000Patterns_1MB-28             	    1411	    895161 ns/op	1171.38 MB/s	 1946143 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_1000Patterns_1MB-28             	    1410	    921731 ns/op	1137.62 MB/s	 1946140 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_1000Patterns_1MB-28             	    1371	    911017 ns/op	1150.99 MB/s	 1946136 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_5000Patterns_1MB-28             	    1192	    956634 ns/op	1096.11 MB/s	 1946137 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_5000Patterns_1MB-28             	    1327	    952189 ns/op	1101.23 MB/s	 1946133 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_5000Patterns_1MB-28             	    1280	    963264 ns/op	1088.57 MB/s	 1946133 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_5000Patterns_1MB-28             	    1276	    944229 ns/op	1110.51 MB/s	 1946134 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_5000Patterns_1MB-28             	    1202	    922609 ns/op	1136.53 MB/s	 1946135 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_10000Patterns_1MB-28            	    1257	    909759 ns/op	1152.59 MB/s	 1946097 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_10000Patterns_1MB-28            	    1228	    911260 ns/op	1150.69 MB/s	 1946097 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_10000Patterns_1MB-28            	    1279	    916672 ns/op	1143.89 MB/s	 1946098 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_10000Patterns_1MB-28            	    1306	    903784 ns/op	1160.21 MB/s	 1946102 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_10000Patterns_1MB-28            	    1267	    909195 ns/op	1153.30 MB/s	 1946103 B/op	      20 allocs/op
+BenchmarkBuild_NFA_Small-28                          	   33387	     35731 ns/op	   16904 B/op	      54 allocs/op
+BenchmarkBuild_NFA_Small-28                          	   33926	     35841 ns/op	   16904 B/op	      54 allocs/op
+BenchmarkBuild_NFA_Small-28                          	   33595	     35964 ns/op	   16904 B/op	      54 allocs/op
+BenchmarkBuild_NFA_Small-28                          	   33628	     35668 ns/op	   16904 B/op	      54 allocs/op
+BenchmarkBuild_NFA_Small-28                          	   33514	     35425 ns/op	   16904 B/op	      54 allocs/op
+BenchmarkBuild_DFA_Small-28                          	   24372	     49275 ns/op	   31760 B/op	      73 allocs/op
+BenchmarkBuild_DFA_Small-28                          	   24300	     49448 ns/op	   31760 B/op	      73 allocs/op
+BenchmarkBuild_DFA_Small-28                          	   24050	     49470 ns/op	   31760 B/op	      73 allocs/op
+BenchmarkBuild_DFA_Small-28                          	   24291	     49499 ns/op	   31760 B/op	      73 allocs/op
+BenchmarkBuild_DFA_Small-28                          	   24168	     49706 ns/op	   31760 B/op	      73 allocs/op
+BenchmarkBuild_NFA_Large-28                          	   15780	     76545 ns/op	   77168 B/op	     748 allocs/op
+BenchmarkBuild_NFA_Large-28                          	   15458	     75953 ns/op	   77168 B/op	     748 allocs/op
+BenchmarkBuild_NFA_Large-28                          	   15748	     76260 ns/op	   77168 B/op	     748 allocs/op
+BenchmarkBuild_NFA_Large-28                          	   15654	     76324 ns/op	   77168 B/op	     748 allocs/op
+BenchmarkBuild_NFA_Large-28                          	   15805	     76811 ns/op	   77168 B/op	     748 allocs/op
+BenchmarkFind_NFA_Small_1KB-28                       	45839317	        26.18 ns/op	39113.16 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_NFA_Small_1KB-28                       	45642994	        26.39 ns/op	38802.57 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_NFA_Small_1KB-28                       	45046566	        26.20 ns/op	39079.38 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_NFA_Small_1KB-28                       	46337770	        26.07 ns/op	39276.73 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_NFA_Small_1KB-28                       	46650130	        26.06 ns/op	39295.72 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_DFA_Small_1KB-28                       	50822260	        23.50 ns/op	43568.92 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_DFA_Small_1KB-28                       	50941785	        23.56 ns/op	43455.81 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_DFA_Small_1KB-28                       	56502229	        23.58 ns/op	43430.03 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_DFA_Small_1KB-28                       	49420340	        23.48 ns/op	43615.77 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFind_DFA_Small_1KB-28                       	51570315	        23.38 ns/op	43790.05 MB/s	       0 B/op	       0 allocs/op
+BenchmarkFindAll_NFA_Small_1MB-28                    	    1158	   1040224 ns/op	1008.03 MB/s	 2536214 B/op	      21 allocs/op
+BenchmarkFindAll_NFA_Small_1MB-28                    	    1280	   1096335 ns/op	 956.44 MB/s	 2536214 B/op	      21 allocs/op
+BenchmarkFindAll_NFA_Small_1MB-28                    	    1064	   1029031 ns/op	1018.99 MB/s	 2536202 B/op	      21 allocs/op
+BenchmarkFindAll_NFA_Small_1MB-28                    	     968	   1075282 ns/op	 975.16 MB/s	 2536203 B/op	      21 allocs/op
+BenchmarkFindAll_NFA_Small_1MB-28                    	    1052	   1093605 ns/op	 958.82 MB/s	 2536203 B/op	      21 allocs/op
+BenchmarkFindAll_DFA_Small_1MB-28                    	    1126	   1015278 ns/op	1032.80 MB/s	 2536207 B/op	      21 allocs/op
+BenchmarkFindAll_DFA_Small_1MB-28                    	    1184	   1043699 ns/op	1004.67 MB/s	 2536208 B/op	      21 allocs/op
+BenchmarkFindAll_DFA_Small_1MB-28                    	    1170	   1020761 ns/op	1027.25 MB/s	 2536204 B/op	      21 allocs/op
+BenchmarkFindAll_DFA_Small_1MB-28                    	    2606	    485153 ns/op	2161.33 MB/s	 2536189 B/op	      21 allocs/op
+BenchmarkFindAll_DFA_Small_1MB-28                    	    2673	    844297 ns/op	1241.95 MB/s	 2536203 B/op	      21 allocs/op
+BenchmarkFindAll_NFA_Medium_1MB-28                   	    1263	    897454 ns/op	1168.39 MB/s	 1946190 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Medium_1MB-28                   	    1186	    878286 ns/op	1193.89 MB/s	 1946195 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Medium_1MB-28                   	    1299	    929225 ns/op	1128.44 MB/s	 1946191 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Medium_1MB-28                   	    1238	    892881 ns/op	1174.37 MB/s	 1946196 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Medium_1MB-28                   	    1328	    898820 ns/op	1166.61 MB/s	 1946198 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Medium_1MB-28                   	    1549	    755896 ns/op	1387.20 MB/s	 1946191 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Medium_1MB-28                   	    1592	    698319 ns/op	1501.57 MB/s	 1946187 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Medium_1MB-28                   	    1665	    754946 ns/op	1388.94 MB/s	 1946186 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Medium_1MB-28                   	    1494	    733172 ns/op	1430.19 MB/s	 1946187 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Medium_1MB-28                   	    1608	    763810 ns/op	1372.82 MB/s	 1946172 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Large_1MB-28                    	     861	   1457689 ns/op	 719.34 MB/s	 1946200 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Large_1MB-28                    	     847	   1455309 ns/op	 720.52 MB/s	 1946202 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Large_1MB-28                    	     840	   1413106 ns/op	 742.04 MB/s	 1946197 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Large_1MB-28                    	     854	   1419226 ns/op	 738.84 MB/s	 1946206 B/op	      20 allocs/op
+BenchmarkFindAll_NFA_Large_1MB-28                    	     828	   1397607 ns/op	 750.27 MB/s	 1946206 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Large_1MB-28                    	    1299	    817851 ns/op	1282.11 MB/s	 1946174 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Large_1MB-28                    	    1363	    843305 ns/op	1243.41 MB/s	 1946177 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Large_1MB-28                    	    1417	    845674 ns/op	1239.93 MB/s	 1946181 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Large_1MB-28                    	    1434	    817074 ns/op	1283.33 MB/s	 1946179 B/op	      20 allocs/op
+BenchmarkFindAll_DFA_Large_1MB-28                    	    1408	    790600 ns/op	1326.30 MB/s	 1946179 B/op	      20 allocs/op
+BenchmarkFindAll_WithPrefilter_1MB-28                	    1262	   1001948 ns/op	1046.54 MB/s	 2536206 B/op	      21 allocs/op
+BenchmarkFindAll_WithPrefilter_1MB-28                	    1158	   1012912 ns/op	1035.21 MB/s	 2536207 B/op	      21 allocs/op
+BenchmarkFindAll_WithPrefilter_1MB-28                	    1090	    946819 ns/op	1107.47 MB/s	 2536198 B/op	      21 allocs/op
+BenchmarkFindAll_WithPrefilter_1MB-28                	    1245	    948054 ns/op	1106.03 MB/s	 2536202 B/op	      21 allocs/op
+BenchmarkFindAll_WithPrefilter_1MB-28                	    1111	    989803 ns/op	1059.38 MB/s	 2536196 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28                  	     504	   2361635 ns/op	 444.00 MB/s	 2536239 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28                  	     489	   2360033 ns/op	 444.31 MB/s	 2536265 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28                  	     500	   2370692 ns/op	 442.31 MB/s	 2536246 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28                  	     499	   2343483 ns/op	 447.44 MB/s	 2536248 B/op	      21 allocs/op
+BenchmarkFindAll_NoPrefilter_1MB-28                  	     506	   2406225 ns/op	 435.78 MB/s	 2536277 B/op	      21 allocs/op
+BenchmarkReplaceAll_1MB-28                           	    1107	   1138507 ns/op	 921.01 MB/s	 2368216 B/op	       2 allocs/op
+BenchmarkReplaceAll_1MB-28                           	    1107	   1083508 ns/op	 967.76 MB/s	 2368220 B/op	       2 allocs/op
+BenchmarkReplaceAll_1MB-28                           	    1100	   1095437 ns/op	 957.22 MB/s	 2368202 B/op	       2 allocs/op
+BenchmarkReplaceAll_1MB-28                           	    1018	   1100409 ns/op	 952.90 MB/s	 2368220 B/op	       2 allocs/op
+BenchmarkReplaceAll_1MB-28                           	    1167	   1078590 ns/op	 972.17 MB/s	 2368207 B/op	       2 allocs/op
+BenchmarkFindIter_Pool_Reuse-28                      	 2145916	       558.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFindIter_Pool_Reuse-28                      	 2103435	       561.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFindIter_Pool_Reuse-28                      	 2140216	       561.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFindIter_Pool_Reuse-28                      	 2134802	       572.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFindIter_Pool_Reuse-28                      	 2143902	       558.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIsMatch_DFA_1MB-28                          	50114427	        24.25 ns/op	43248473.62 MB/s	       0 B/op	       0 allocs/op
+BenchmarkIsMatch_DFA_1MB-28                          	47403474	        24.11 ns/op	43484119.85 MB/s	       0 B/op	       0 allocs/op
+BenchmarkIsMatch_DFA_1MB-28                          	49799349	        24.36 ns/op	43048563.16 MB/s	       0 B/op	       0 allocs/op
+BenchmarkIsMatch_DFA_1MB-28                          	48816206	        24.34 ns/op	43078811.75 MB/s	       0 B/op	       0 allocs/op
+BenchmarkIsMatch_DFA_1MB-28                          	48977392	        24.19 ns/op	43353683.59 MB/s	       0 B/op	       0 allocs/op
+BenchmarkMatchKind_Standard_1MB-28                   	    1156	    978868 ns/op	1071.21 MB/s	 2536203 B/op	      21 allocs/op
+BenchmarkMatchKind_Standard_1MB-28                   	    1212	    990626 ns/op	1058.50 MB/s	 2536190 B/op	      21 allocs/op
+BenchmarkMatchKind_Standard_1MB-28                   	    1216	   1002095 ns/op	1046.38 MB/s	 2536200 B/op	      21 allocs/op
+BenchmarkMatchKind_Standard_1MB-28                   	    1200	   1025264 ns/op	1022.74 MB/s	 2536191 B/op	      21 allocs/op
+BenchmarkMatchKind_Standard_1MB-28                   	    1210	    986660 ns/op	1062.75 MB/s	 2536208 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28              	     180	   6688201 ns/op	 156.78 MB/s	 2536448 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28              	     171	   6766383 ns/op	 154.97 MB/s	 2536384 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28              	     182	   6687197 ns/op	 156.80 MB/s	 2536368 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28              	     178	   6505099 ns/op	 161.19 MB/s	 2536298 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostFirst_1MB-28              	     178	   6654008 ns/op	 157.59 MB/s	 2536368 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28            	     182	   6451560 ns/op	 162.53 MB/s	 2536233 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28            	     182	   6446059 ns/op	 162.67 MB/s	 2536233 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28            	     189	   6384421 ns/op	 164.24 MB/s	 2536332 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28            	     188	   6353438 ns/op	 165.04 MB/s	 2536228 B/op	      21 allocs/op
+BenchmarkMatchKind_LeftmostLongest_1MB-28            	     187	   6450817 ns/op	 162.55 MB/s	 2536495 B/op	      21 allocs/op
+PASS
+ok  	github.com/peem16/aho-corasick	324.653s
+?   	github.com/peem16/aho-corasick/tools/bench2json	[no test files]

@@ -117,6 +117,54 @@ func BenchmarkBuild_NFA_Large(b *testing.B) {
 	}
 }
 
+func BenchmarkBuild_NFA_1000(b *testing.B) {
+	bs := make([][]byte, len(patterns1000))
+	for i, p := range patterns1000 {
+		bs[i] = []byte(p)
+	}
+	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = bldr.Build(bs)
+	}
+}
+
+func BenchmarkBuild_NFA_5000(b *testing.B) {
+	bs := make([][]byte, len(patterns5000))
+	for i, p := range patterns5000 {
+		bs[i] = []byte(p)
+	}
+	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = bldr.Build(bs)
+	}
+}
+
+func BenchmarkBuild_NFA_LeftmostFirst_1000(b *testing.B) {
+	bs := make([][]byte, len(patterns1000))
+	for i, p := range patterns1000 {
+		bs[i] = []byte(p)
+	}
+	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindLeftmostFirst)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = bldr.Build(bs)
+	}
+}
+
+func BenchmarkBuild_DFA_1000(b *testing.B) {
+	bs := make([][]byte, len(patterns1000))
+	for i, p := range patterns1000 {
+		bs[i] = []byte(p)
+	}
+	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindDFA)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = bldr.Build(bs)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Search benchmarks — small patterns, 1 KB haystack
 // ---------------------------------------------------------------------------
@@ -373,5 +421,42 @@ func BenchmarkBuild_Auto_10000Patterns(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = bldr.Build(bs)
+	}
+}
+
+// NFA Leftmost benchmarks — medium patterns (>10 → Auto selects NFA)
+func BenchmarkMatchKind_LeftmostFirst_NFA_Medium_1MB(b *testing.B) {
+	a := buildAC(b, mediumPatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostFirst))
+	b.SetBytes(int64(len(hay1MB_medium)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay1MB_medium)
+	}
+}
+
+func BenchmarkMatchKind_LeftmostLongest_NFA_Medium_1MB(b *testing.B) {
+	a := buildAC(b, mediumPatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostLongest))
+	b.SetBytes(int64(len(hay1MB_medium)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay1MB_medium)
+	}
+}
+
+func BenchmarkMatchKind_LeftmostFirst_NFA_Large_1MB(b *testing.B) {
+	a := buildAC(b, largePatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostFirst))
+	b.SetBytes(int64(len(hay1MB_large)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay1MB_large)
+	}
+}
+
+func BenchmarkMatchKind_LeftmostLongest_NFA_Large_1MB(b *testing.B) {
+	a := buildAC(b, largePatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostLongest))
+	b.SetBytes(int64(len(hay1MB_large)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay1MB_large)
 	}
 }

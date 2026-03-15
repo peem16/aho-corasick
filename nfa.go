@@ -114,10 +114,15 @@ func (n *NFA) nextState(s stateID, b byte) stateID {
 			return next
 		}
 		// Failure link reached start → use dense table.
-		if n.states[s].fail == startStateID {
+		fail := n.states[s].fail
+		if fail == startStateID {
 			return n.startTrans[b]
 		}
-		s = n.states[s].fail
+		// Check if failure state has a dense table — O(1) resolve.
+		if di := n.denseIdx[fail]; di >= 0 {
+			return n.denseTrans[int(di)<<8|int(b)]
+		}
+		s = fail
 	}
 }
 
@@ -217,9 +222,8 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 		}
 	}
 
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
+	for qi := 0; qi < len(queue); qi++ {
+		cur := queue[qi]
 
 		for _, tr := range tmpTrans[cur] {
 			b := tr.b
@@ -472,7 +476,20 @@ func (n *NFA) flattenOutputs(tmp [][]PatternID) {
 			continue
 		}
 		// Sort for determinism (LeftmostFirst expects lowest PatternID first).
-		sort.Slice(outs, func(i, j int) bool { return outs[i] < outs[j] })
+		// Use insertion sort for small slices to avoid sort.Slice overhead.
+		if len(outs) <= 8 {
+			for i := 1; i < len(outs); i++ {
+				key := outs[i]
+				j := i - 1
+				for j >= 0 && outs[j] > key {
+					outs[j+1] = outs[j]
+					j--
+				}
+				outs[j+1] = key
+			}
+		} else {
+			sort.Slice(outs, func(i, j int) bool { return outs[i] < outs[j] })
+		}
 		n.states[s].outputIdx = int32(len(n.outputs))
 		n.outLen[s] = int32(len(outs))
 		n.outputs = append(n.outputs, outs...)
