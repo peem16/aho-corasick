@@ -87,8 +87,7 @@ func BenchmarkBuild_NFA_Small(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -99,8 +98,7 @@ func BenchmarkBuild_DFA_Small(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindDFA)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -111,8 +109,7 @@ func BenchmarkBuild_NFA_Large(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -123,8 +120,7 @@ func BenchmarkBuild_NFA_1000(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -135,8 +131,7 @@ func BenchmarkBuild_NFA_5000(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -147,8 +142,7 @@ func BenchmarkBuild_NFA_LeftmostFirst_1000(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindLeftmostFirst)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -159,8 +153,7 @@ func BenchmarkBuild_DFA_1000(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindDFA)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -180,8 +173,7 @@ var hay1MB_xl10000 = haystackOf(1024*1024, xlPatterns10000)
 func BenchmarkFind_NFA_Small_1KB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
 	b.SetBytes(int64(len(hay1KB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = a.Find(hay1KB)
 	}
 }
@@ -189,8 +181,7 @@ func BenchmarkFind_NFA_Small_1KB(b *testing.B) {
 func BenchmarkFind_DFA_Small_1KB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1KB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = a.Find(hay1KB)
 	}
 }
@@ -198,8 +189,7 @@ func BenchmarkFind_DFA_Small_1KB(b *testing.B) {
 func BenchmarkFindAll_NFA_Small_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB)
 	}
 }
@@ -207,8 +197,7 @@ func BenchmarkFindAll_NFA_Small_1MB(b *testing.B) {
 func BenchmarkFindAll_DFA_Small_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB)
 	}
 }
@@ -220,8 +209,7 @@ func BenchmarkFindAll_DFA_Small_1MB(b *testing.B) {
 func BenchmarkFindAll_NFA_Medium_1MB(b *testing.B) {
 	a := buildAC(b, mediumPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
 	b.SetBytes(int64(len(hay1MB_medium)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_medium)
 	}
 }
@@ -229,8 +217,7 @@ func BenchmarkFindAll_NFA_Medium_1MB(b *testing.B) {
 func BenchmarkFindAll_DFA_Medium_1MB(b *testing.B) {
 	a := buildAC(b, mediumPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB_medium)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_medium)
 	}
 }
@@ -242,8 +229,7 @@ func BenchmarkFindAll_DFA_Medium_1MB(b *testing.B) {
 func BenchmarkFindAll_NFA_Large_1MB(b *testing.B) {
 	a := buildAC(b, largePatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
 	b.SetBytes(int64(len(hay1MB_large)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_large)
 	}
 }
@@ -251,8 +237,7 @@ func BenchmarkFindAll_NFA_Large_1MB(b *testing.B) {
 func BenchmarkFindAll_DFA_Large_1MB(b *testing.B) {
 	a := buildAC(b, largePatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB_large)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_large)
 	}
 }
@@ -264,8 +249,7 @@ func BenchmarkFindAll_DFA_Large_1MB(b *testing.B) {
 func BenchmarkFindAll_WithPrefilter_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Prefilter(true))
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB)
 	}
 }
@@ -273,8 +257,7 @@ func BenchmarkFindAll_WithPrefilter_1MB(b *testing.B) {
 func BenchmarkFindAll_NoPrefilter_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Prefilter(false))
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB)
 	}
 }
@@ -290,8 +273,7 @@ func BenchmarkReplaceAll_1MB(b *testing.B) {
 		repls[i] = []byte("[" + p + "]")
 	}
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = a.ReplaceAll(hay1MB, repls)
 	}
 }
@@ -303,8 +285,7 @@ func BenchmarkReplaceAll_1MB(b *testing.B) {
 func BenchmarkFindIter_Pool_Reuse(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder())
 	hay := hay1KB
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		it := a.FindIter(hay)
 		for {
 			_, ok := it.Next()
@@ -323,8 +304,7 @@ func BenchmarkFindIter_Pool_Reuse(b *testing.B) {
 func BenchmarkIsMatch_DFA_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.IsMatch(hay1MB)
 	}
 }
@@ -336,8 +316,7 @@ func BenchmarkIsMatch_DFA_1MB(b *testing.B) {
 func BenchmarkMatchKind_Standard_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().MatchKind(ac.MatchKindStandard))
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB)
 	}
 }
@@ -345,8 +324,7 @@ func BenchmarkMatchKind_Standard_1MB(b *testing.B) {
 func BenchmarkMatchKind_LeftmostFirst_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostFirst))
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB)
 	}
 }
@@ -354,8 +332,7 @@ func BenchmarkMatchKind_LeftmostFirst_1MB(b *testing.B) {
 func BenchmarkMatchKind_LeftmostLongest_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostLongest))
 	b.SetBytes(int64(len(hay1MB)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB)
 	}
 }
@@ -367,8 +344,7 @@ func BenchmarkMatchKind_LeftmostLongest_1MB(b *testing.B) {
 func BenchmarkFindAll_Auto_1000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, xlPatterns1000, ac.NewBuilder())
 	b.SetBytes(int64(len(hay1MB_xl1000)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_xl1000)
 	}
 }
@@ -376,8 +352,7 @@ func BenchmarkFindAll_Auto_1000Patterns_1MB(b *testing.B) {
 func BenchmarkFindAll_DFA_1000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, xlPatterns1000, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB_xl1000)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_xl1000)
 	}
 }
@@ -385,8 +360,7 @@ func BenchmarkFindAll_DFA_1000Patterns_1MB(b *testing.B) {
 func BenchmarkFindAll_Auto_5000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, xlPatterns5000, ac.NewBuilder())
 	b.SetBytes(int64(len(hay1MB_xl5000)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_xl5000)
 	}
 }
@@ -394,8 +368,7 @@ func BenchmarkFindAll_Auto_5000Patterns_1MB(b *testing.B) {
 func BenchmarkFindAll_Auto_10000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, xlPatterns10000, ac.NewBuilder())
 	b.SetBytes(int64(len(hay1MB_xl10000)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_xl10000)
 	}
 }
@@ -406,8 +379,7 @@ func BenchmarkBuild_Auto_1000Patterns(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -418,8 +390,7 @@ func BenchmarkBuild_Auto_10000Patterns(b *testing.B) {
 		bs[i] = []byte(p)
 	}
 	bldr := ac.NewBuilder()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
 }
@@ -428,8 +399,7 @@ func BenchmarkBuild_Auto_10000Patterns(b *testing.B) {
 func BenchmarkMatchKind_LeftmostFirst_NFA_Medium_1MB(b *testing.B) {
 	a := buildAC(b, mediumPatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostFirst))
 	b.SetBytes(int64(len(hay1MB_medium)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_medium)
 	}
 }
@@ -437,8 +407,7 @@ func BenchmarkMatchKind_LeftmostFirst_NFA_Medium_1MB(b *testing.B) {
 func BenchmarkMatchKind_LeftmostLongest_NFA_Medium_1MB(b *testing.B) {
 	a := buildAC(b, mediumPatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostLongest))
 	b.SetBytes(int64(len(hay1MB_medium)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_medium)
 	}
 }
@@ -446,8 +415,7 @@ func BenchmarkMatchKind_LeftmostLongest_NFA_Medium_1MB(b *testing.B) {
 func BenchmarkMatchKind_LeftmostFirst_NFA_Large_1MB(b *testing.B) {
 	a := buildAC(b, largePatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostFirst))
 	b.SetBytes(int64(len(hay1MB_large)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_large)
 	}
 }
@@ -455,8 +423,7 @@ func BenchmarkMatchKind_LeftmostFirst_NFA_Large_1MB(b *testing.B) {
 func BenchmarkMatchKind_LeftmostLongest_NFA_Large_1MB(b *testing.B) {
 	a := buildAC(b, largePatterns, ac.NewBuilder().MatchKind(ac.MatchKindLeftmostLongest))
 	b.SetBytes(int64(len(hay1MB_large)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = a.FindAll(hay1MB_large)
 	}
 }
