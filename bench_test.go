@@ -55,6 +55,27 @@ var largePatterns = func() []string {
 	}
 	return out
 }()
+var xlPatterns1000 = func() []string {
+	out := make([]string, 1000)
+	for i := range out {
+		out[i] = fmt.Sprintf("pattern%d", i)
+	}
+	return out
+}()
+var xlPatterns5000 = func() []string {
+	out := make([]string, 5000)
+	for i := range out {
+		out[i] = fmt.Sprintf("pattern%d", i)
+	}
+	return out
+}()
+var xlPatterns10000 = func() []string {
+	out := make([]string, 10000)
+	for i := range out {
+		out[i] = fmt.Sprintf("pattern%d", i)
+	}
+	return out
+}()
 
 // ---------------------------------------------------------------------------
 // Build benchmarks
@@ -104,6 +125,9 @@ var hay1KB = haystackOf(1024, smallPatterns)
 var hay1MB = haystackOf(1024*1024, smallPatterns)
 var hay1MB_medium = haystackOf(1024*1024, mediumPatterns)
 var hay1MB_large = haystackOf(1024*1024, largePatterns)
+var hay1MB_xl1000 = haystackOf(1024*1024, xlPatterns1000)
+var hay1MB_xl5000 = haystackOf(1024*1024, xlPatterns5000)
+var hay1MB_xl10000 = haystackOf(1024*1024, xlPatterns10000)
 
 func BenchmarkFind_NFA_Small_1KB(b *testing.B) {
 	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
@@ -285,5 +309,69 @@ func BenchmarkMatchKind_LeftmostLongest_1MB(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = a.FindAll(hay1MB)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// High pattern-count benchmarks (Auto kind — exercises resolveKind heuristic)
+// ---------------------------------------------------------------------------
+
+func BenchmarkFindAll_Auto_1000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, xlPatterns1000, ac.NewBuilder())
+	b.SetBytes(int64(len(hay1MB_xl1000)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay1MB_xl1000)
+	}
+}
+
+func BenchmarkFindAll_DFA_1000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, xlPatterns1000, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	b.SetBytes(int64(len(hay1MB_xl1000)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay1MB_xl1000)
+	}
+}
+
+func BenchmarkFindAll_Auto_5000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, xlPatterns5000, ac.NewBuilder())
+	b.SetBytes(int64(len(hay1MB_xl5000)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay1MB_xl5000)
+	}
+}
+
+func BenchmarkFindAll_Auto_10000Patterns_1MB(b *testing.B) {
+	a := buildAC(b, xlPatterns10000, ac.NewBuilder())
+	b.SetBytes(int64(len(hay1MB_xl10000)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.FindAll(hay1MB_xl10000)
+	}
+}
+
+func BenchmarkBuild_Auto_1000Patterns(b *testing.B) {
+	bs := make([][]byte, len(xlPatterns1000))
+	for i, p := range xlPatterns1000 {
+		bs[i] = []byte(p)
+	}
+	bldr := ac.NewBuilder()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = bldr.Build(bs)
+	}
+}
+
+func BenchmarkBuild_Auto_10000Patterns(b *testing.B) {
+	bs := make([][]byte, len(xlPatterns10000))
+	for i, p := range xlPatterns10000 {
+		bs[i] = []byte(p)
+	}
+	bldr := ac.NewBuilder()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = bldr.Build(bs)
 	}
 }

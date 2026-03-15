@@ -86,20 +86,22 @@ var findOverlappingIterPool = sync.Pool{
 // This is only meaningful when the automaton was built with MatchKindStandard.
 // For Leftmost* semantics it behaves identically to FindIter.
 type FindOverlappingIter struct {
-	ac         *AhoCorasick
-	nfa        *NFA    // cached NFA pointer; nil when using DFA
-	haystack   []byte
-	pos        int     // current byte position in haystack
-	state      stateID // current automaton state
-	matchIdx   int     // index into current state's match list
-	done       bool
+	ac       *AhoCorasick
+	nfa      *NFA // cached NFA pointer; nil when using DFA
+	dfa      *DFA // cached DFA pointer; nil when using NFA
+	haystack []byte
+	pos      int     // current byte position in haystack
+	state    stateID // current automaton state
+	matchIdx int     // index into current state's match list
+	done     bool
 }
 
 // newFindOverlappingIter acquires a FindOverlappingIter from the pool.
 func newFindOverlappingIter(ac *AhoCorasick, haystack []byte) *FindOverlappingIter {
 	it := findOverlappingIterPool.Get().(*FindOverlappingIter)
 	it.ac = ac
-	it.nfa, _ = ac.imp.(*NFA) // cache type assertion; nil if DFA
+	it.nfa = ac.nfa // use cached pointer; nil if DFA
+	it.dfa = ac.dfa // use cached pointer; nil if NFA
 	it.haystack = haystack
 	it.pos = 0
 	it.state = startStateID
@@ -116,6 +118,9 @@ func (it *FindOverlappingIter) Next() (Match, bool) {
 	}
 	if it.nfa != nil {
 		return it.nextNFA()
+	}
+	if it.dfa != nil {
+		return it.nextDFA()
 	}
 	return it.nextGeneric()
 }
@@ -269,6 +274,93 @@ func (it *FindOverlappingIter) nextNFA() (Match, bool) {
 	return Match{}, false
 }
 
+// nextDFA is the specialized hot path for DFA overlapping iteration.
+// All DFA field accesses are inlined to eliminate interface dispatch and
+// allow the compiler to keep the transition table pointer in a register.
+func (it *FindOverlappingIter) nextDFA() (Match, bool) {
+	dfa := it.dfa
+	hay := it.haystack
+	patLens := it.ac.patLens
+	pf := it.ac.pf
+
+	// Cache DFA fields as locals for register allocation.
+	trans := dfa.trans
+	outBase := dfa.outBase
+	outBuf := dfa.outBuf
+	outLen := dfa.outLen
+	useAlpha := dfa.useAlpha
+
+	// Drain remaining matches from the current state.
+	if it.matchIdx > 0 {
+		base := outBase[it.state]
+		if base >= 0 {
+			olen := outLen[it.state]
+			if int32(it.matchIdx) < olen {
+				pid := outBuf[base+int32(it.matchIdx)]
+				m := Match{
+					id:    pid,
+					start: it.pos - int(patLens[pid]),
+					end:   it.pos,
+				}
+				it.matchIdx++
+				return m, true
+			}
+		}
+		it.matchIdx = 0
+	}
+
+	pos := it.pos
+	state := it.state
+	n := len(hay)
+	if pos >= n {
+		it.done = true
+		return Match{}, false
+	}
+
+	// BCE hint.
+	_ = hay[n-1]
+
+	for pos < n {
+		// Prefilter: skip ahead when at start state.
+		if pf.enabled && state == startStateID {
+			next := pf.next(hay, pos)
+			if next < 0 {
+				it.pos = n
+				it.state = startStateID
+				it.done = true
+				return Match{}, false
+			}
+			pos = next
+		}
+
+		b := hay[pos]
+		pos++
+		if useAlpha {
+			b = dfa.alphabet[b]
+		}
+		// O(1) DFA transition — no failure links needed.
+		state = trans[int(state)<<8|int(b)]
+
+		if base := outBase[state]; base >= 0 {
+			pid := outBuf[base]
+			m := Match{
+				id:    pid,
+				start: pos - int(patLens[pid]),
+				end:   pos,
+			}
+			it.pos = pos
+			it.state = state
+			it.matchIdx = 1
+			return m, true
+		}
+	}
+
+	it.pos = pos
+	it.state = state
+	it.done = true
+	return Match{}, false
+}
+
 // nextGeneric is the fallback path using the automaton interface.
 func (it *FindOverlappingIter) nextGeneric() (Match, bool) {
 	imp := it.ac.imp
@@ -316,6 +408,7 @@ func (it *FindOverlappingIter) nextGeneric() (Match, bool) {
 func (it *FindOverlappingIter) Close() {
 	it.ac = nil
 	it.nfa = nil
+	it.dfa = nil
 	it.haystack = nil
 	findOverlappingIterPool.Put(it)
 }

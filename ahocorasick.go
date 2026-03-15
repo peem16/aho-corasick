@@ -4,7 +4,9 @@ package ahocorasick
 // Build one with New or AhoCorasickBuilder.Build, then reuse it
 // freely — it is safe for concurrent use after construction.
 type AhoCorasick struct {
-	imp       automaton   // *NFA or *DFA
+	imp       automaton // *NFA or *DFA
+	nfa       *NFA      // non-nil when imp is *NFA; avoids repeated type assertions
+	dfa       *DFA      // non-nil when imp is *DFA; avoids repeated type assertions
 	pf        *prefilter
 	matchKind MatchKind
 	kind      AhoCorasickKind
@@ -83,8 +85,14 @@ func (ac *AhoCorasick) findFrom(haystack []byte, pos int, cur stateID) (Match, b
 	case MatchKindStandard:
 		return ac.findStandard(haystack, pos, cur)
 	case MatchKindLeftmostFirst:
+		if ac.dfa != nil {
+			return ac.findLeftmostFirstDFA(ac.dfa, haystack, pos)
+		}
 		return ac.findLeftmostFirst(haystack, pos)
 	case MatchKindLeftmostLongest:
+		if ac.dfa != nil {
+			return ac.findLeftmostLongestDFA(ac.dfa, haystack, pos)
+		}
 		return ac.findLeftmostLongest(haystack, pos)
 	}
 	return Match{}, false
@@ -95,9 +103,12 @@ func (ac *AhoCorasick) findFrom(haystack []byte, pos int, cur stateID) (Match, b
 // ---------------------------------------------------------------------------
 
 func (ac *AhoCorasick) findStandard(haystack []byte, pos int, state stateID) (Match, bool) {
-	// Use specialized NFA path when available.
-	if nfa, ok := ac.imp.(*NFA); ok {
-		return ac.findStandardNFA(nfa, haystack, pos, state)
+	// Use cached pointers to avoid repeated type assertions in hot loop.
+	if ac.nfa != nil {
+		return ac.findStandardNFA(ac.nfa, haystack, pos, state)
+	}
+	if ac.dfa != nil {
+		return ac.findStandardDFA(ac.dfa, haystack, pos, state)
 	}
 	return ac.findStandardGeneric(haystack, pos, state)
 }
@@ -145,6 +156,65 @@ func (ac *AhoCorasick) findStandardGeneric(haystack []byte, pos int, state state
 			ms := imp.matches(state)
 			pid := ms[0]
 			patLen := int(ac.patLens[pid])
+			return Match{id: pid, start: pos - patLen, end: pos}, true
+		}
+	}
+
+	return Match{}, false
+}
+
+// findStandardDFA is an inlined DFA path for findStandard that eliminates
+// interface dispatch and allows the compiler to register-allocate the hot
+// transition table pointer.
+func (ac *AhoCorasick) findStandardDFA(dfa *DFA, haystack []byte, pos int, state stateID) (Match, bool) {
+	pf := ac.pf
+	patLens := ac.patLens
+	n := len(haystack)
+
+	trans := dfa.trans
+	outBase := dfa.outBase
+	outBuf := dfa.outBuf
+	useAlpha := dfa.useAlpha
+
+	// Check for a match at the current state before consuming any byte.
+	if outBase[state] >= 0 {
+		pid := outBuf[outBase[state]]
+		patLen := int(patLens[pid])
+		start := pos - patLen
+		if start < 0 {
+			start = 0
+		}
+		return Match{id: pid, start: start, end: pos}, true
+	}
+
+	if n == 0 || pos >= n {
+		return Match{}, false
+	}
+
+	// BCE hint.
+	_ = haystack[n-1]
+
+	for pos < n {
+		// Prefilter: skip ahead when at start state.
+		if pf.enabled && state == startStateID {
+			next := pf.next(haystack, pos)
+			if next < 0 {
+				return Match{}, false
+			}
+			pos = next
+		}
+
+		b := haystack[pos]
+		pos++
+		if useAlpha {
+			b = dfa.alphabet[b]
+		}
+		// O(1) transition — no failure links needed.
+		state = trans[int(state)<<8|int(b)]
+
+		if outBase[state] >= 0 {
+			pid := outBuf[outBase[state]]
+			patLen := int(patLens[pid])
 			return Match{id: pid, start: pos - patLen, end: pos}, true
 		}
 	}
@@ -272,6 +342,64 @@ func (ac *AhoCorasick) findStandardNFA(nfa *NFA, haystack []byte, pos int, state
 // match" (the leftmost, earliest-pattern match found so far) and continuing
 // until we can guarantee no better match starts at the same or earlier position.
 
+// findLeftmostFirstDFA is an inlined DFA path that eliminates interface dispatch.
+func (ac *AhoCorasick) findLeftmostFirstDFA(dfa *DFA, haystack []byte, pos int) (Match, bool) {
+	patLens := ac.patLens
+	n := len(haystack)
+	if n == 0 {
+		if dfa.outBase[startStateID] >= 0 {
+			pid := dfa.outBuf[dfa.outBase[startStateID]]
+			return Match{id: pid, start: 0, end: 0}, true
+		}
+		return Match{}, false
+	}
+
+	trans := dfa.trans
+	outBase := dfa.outBase
+	outBuf := dfa.outBuf
+	useAlpha := dfa.useAlpha
+
+	_ = haystack[n-1]
+
+	state := startStateID
+	matchStart := -1
+	var best Match
+	hasBest := false
+
+	for pos < n {
+		b := haystack[pos]
+		pos++
+		if useAlpha {
+			b = dfa.alphabet[b]
+		}
+		state = trans[int(state)<<8|int(b)]
+
+		if state == deadStateID {
+			if hasBest {
+				return best, true
+			}
+			state = startStateID
+			matchStart = -1
+			continue
+		}
+
+		if base := outBase[state]; base >= 0 {
+			pid := outBuf[base] // lowest PatternID = LeftmostFirst
+			patLen := int(patLens[pid])
+			start := pos - patLen
+			if !hasBest || start < best.start || (start == best.start && pid < best.id) {
+				best = Match{id: pid, start: start, end: pos}
+				hasBest = true
+				matchStart = start
+			}
+		} else if hasBest && matchStart >= 0 {
+			_ = matchStart
+		}
+	}
+
+	return best, hasBest
+}
+
 func (ac *AhoCorasick) findLeftmostFirst(haystack []byte, pos int) (Match, bool) {
 	imp := ac.imp
 	n := len(haystack)
@@ -333,6 +461,77 @@ func (ac *AhoCorasick) findLeftmostFirst(haystack []byte, pos int) (Match, bool)
 // ---------------------------------------------------------------------------
 // LeftmostLongest search
 // ---------------------------------------------------------------------------
+
+// findLeftmostLongestDFA is an inlined DFA path for leftmost-longest search.
+func (ac *AhoCorasick) findLeftmostLongestDFA(dfa *DFA, haystack []byte, pos int) (Match, bool) {
+	patLens := ac.patLens
+	n := len(haystack)
+	if n == 0 {
+		if base := dfa.outBase[startStateID]; base >= 0 {
+			olen := dfa.outLen[startStateID]
+			pid := dfa.outBuf[base]
+			bestLen := int(patLens[pid])
+			for i := int32(1); i < olen; i++ {
+				p := dfa.outBuf[base+i]
+				if l := int(patLens[p]); l > bestLen {
+					bestLen = l
+					pid = p
+				}
+			}
+			return Match{id: pid, start: 0, end: 0}, true
+		}
+		return Match{}, false
+	}
+
+	trans := dfa.trans
+	outBase := dfa.outBase
+	outBuf := dfa.outBuf
+	outLen := dfa.outLen
+	useAlpha := dfa.useAlpha
+
+	_ = haystack[n-1]
+
+	state := startStateID
+	var best Match
+	hasBest := false
+
+	for pos < n {
+		b := haystack[pos]
+		pos++
+		if useAlpha {
+			b = dfa.alphabet[b]
+		}
+		state = trans[int(state)<<8|int(b)]
+
+		if state == deadStateID {
+			if hasBest {
+				return best, true
+			}
+			state = startStateID
+			continue
+		}
+
+		if base := outBase[state]; base >= 0 {
+			olen := outLen[state]
+			pid := outBuf[base]
+			patLen := int(patLens[pid])
+			for i := int32(1); i < olen; i++ {
+				p := outBuf[base+i]
+				if l := int(patLens[p]); l > patLen {
+					patLen = l
+					pid = p
+				}
+			}
+			start := pos - patLen
+			if !hasBest || start < best.start || (start == best.start && patLen > best.end-best.start) {
+				best = Match{id: pid, start: start, end: pos}
+				hasBest = true
+			}
+		}
+	}
+
+	return best, hasBest
+}
 
 func (ac *AhoCorasick) findLeftmostLongest(haystack []byte, pos int) (Match, bool) {
 	imp := ac.imp

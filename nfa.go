@@ -305,21 +305,34 @@ func addTransTmp(tr []nfaTrans, b byte, next stateID) []nfaTrans {
 // "in the middle" of matching a longer pattern don't report a shorter
 // sub-match prematurely (LeftmostFirst) or continue past a finished
 // match (LeftmostLongest).
+//
+// Optimized: O(256) merge instead of O(n²) repeated sorted insertion.
+// Since existing transitions are already sorted, we merge-scan in one pass
+// and build a complete 256-entry list directly.
 func addDeadTransitions(states []nfaState, tmpTrans [][]nfaTrans, tmpOutputs [][]PatternID) {
 	for s := stateID(1); int(s) < len(states); s++ {
 		if len(tmpOutputs[s]) == 0 {
 			continue
 		}
-		present := make(map[byte]bool, len(tmpTrans[s]))
-		for _, tr := range tmpTrans[s] {
-			present[tr.b] = true
+		existing := tmpTrans[s]
+		if len(existing) == 256 {
+			// Already has transitions for every byte — nothing to add.
+			continue
 		}
+		// Build a full 256-entry sorted transition list by merging existing
+		// (sorted) transitions with dead-state fillers, in O(256) time.
+		newTrans := make([]nfaTrans, 0, 256)
+		ei := 0
 		for b := 0; b < 256; b++ {
-			if present[byte(b)] {
-				continue
+			bb := byte(b)
+			if ei < len(existing) && existing[ei].b == bb {
+				newTrans = append(newTrans, existing[ei])
+				ei++
+			} else {
+				newTrans = append(newTrans, nfaTrans{b: bb, next: deadStateID})
 			}
-			tmpTrans[s] = addTransTmp(tmpTrans[s], byte(b), deadStateID)
 		}
+		tmpTrans[s] = newTrans
 	}
 }
 
