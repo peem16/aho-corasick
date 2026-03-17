@@ -179,6 +179,19 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 	// We accumulate outputs in a temporary slice-of-slice, then flatten later.
 	tmpOutputs := make([][]PatternID, 2) // indexed by stateID
 
+	// Slab allocator for per-state transition entries.
+	// Most trie states have exactly 1 child (linear chains within patterns).
+	// Pre-allocating 1-entry slots from a contiguous buffer avoids a heap
+	// allocation per state.  States that need >1 transition spill to
+	// normal append growth.  Size = sum(patternLengths)+2, which is an
+	// upper bound on state count (8 bytes per entry — negligible overhead).
+	slabSize := 2
+	for _, p := range patterns {
+		slabSize += len(p)
+	}
+	transSlab := make([]nfaTrans, slabSize)
+	slabIdx := 2 // skip dead and start state slots
+
 	for pid, pat := range patterns {
 		if len(pat) == 0 {
 			// Empty pattern matches at every position; attach to start.
@@ -197,7 +210,13 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 				newID := stateID(len(n.states))
 				n.states = append(n.states, nfaState{outputIdx: -1})
 				tmpDepths = append(tmpDepths, uint16(depth+1))
-				tmpTrans = append(tmpTrans, nil)
+				// Give new state a pre-allocated 1-entry slot from slab.
+				if slabIdx < len(transSlab) {
+					tmpTrans = append(tmpTrans, transSlab[slabIdx:slabIdx:slabIdx+1])
+					slabIdx++
+				} else {
+					tmpTrans = append(tmpTrans, nil)
+				}
 				tmpOutputs = append(tmpOutputs, nil)
 				tmpTrans[cur] = addTransTmp(tmpTrans[cur], b, newID)
 				next = newID
@@ -399,7 +418,7 @@ func (n *NFA) buildDenseTrans(maxDepth uint16, depths []uint16) {
 
 	// Adaptive: reduce maxDepth if memory would exceed 2MB budget.
 	// O(S) single pass: count states per depth, then prefix-sum.
-	const maxDenseBytes = 2 << 20 // 2MB
+	const maxDenseBytes = 8 << 20 // 8MB
 	const maxTrackedDepth = 256   // depths beyond this are never densified
 	var cumByDepth [maxTrackedDepth + 1]int32
 	for s := stateID(2); s < numStates; s++ {
