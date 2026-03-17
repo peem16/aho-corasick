@@ -105,13 +105,62 @@ func buildDFA(nfa *NFA) *DFA {
 		d.outBuf = append(d.outBuf, outs...)
 	}
 
-	// Populate transitions.
-	// For every state s and every byte b, follow NFA failure links to
-	// find the target state.
-	for s := 0; s < numStates; s++ {
-		base := s << 8 // s * 256
-		for b := 0; b < 256; b++ {
-			d.trans[base|b] = nfa.nextState(stateID(s), byte(b))
+	// Populate transitions using failure-link inheritance in BFS order.
+	// For each state s with failure link f:
+	//   DFA[s][b] = DFA[f][b]  for bytes where s has no direct transition
+	//   DFA[s][b] = child      for bytes where s has a direct trie transition
+	// Since f is always at lesser depth, BFS ensures f is already computed.
+	// This is O(S × 256) instead of O(S × 256 × depth).
+
+	transBuf := nfa.transBuf
+	transBase := nfa.transBase
+	transLen := nfa.transLen
+
+	// Dead state (0): all transitions stay at 0 (zeroed by make).
+
+	// Start state: copy from NFA's precomputed startTrans.
+	startBase := int(startStateID) << 8
+	for b := 0; b < 256; b++ {
+		d.trans[startBase|b] = nfa.startTrans[b]
+	}
+
+	// BFS from start's children.
+	visited := make([]bool, numStates)
+	visited[deadStateID] = true
+	visited[startStateID] = true
+
+	queue := make([]stateID, 0, numStates-2)
+
+	// Enqueue start state's trie children.
+	stBase := int(transBase[startStateID])
+	stLen := int(transLen[startStateID])
+	for i := 0; i < stLen; i++ {
+		child := transBuf[stBase+i].next
+		if child != deadStateID && !visited[child] {
+			visited[child] = true
+			queue = append(queue, child)
+		}
+	}
+
+	for qi := 0; qi < len(queue); qi++ {
+		s := queue[qi]
+		sBase := int(s) << 8
+		fail := nfa.states[s].fail
+		failBase := int(fail) << 8
+
+		// Copy failure state's DFA row (O(256) memcpy).
+		copy(d.trans[sBase:sBase+256], d.trans[failBase:failBase+256])
+
+		// Overwrite with s's direct NFA transitions and enqueue children.
+		tb := int(transBase[s])
+		tl := int(transLen[s])
+		for i := 0; i < tl; i++ {
+			tr := &transBuf[tb+i]
+			d.trans[sBase|int(tr.b)] = tr.next
+			if tr.next != deadStateID && !visited[tr.next] {
+				visited[tr.next] = true
+				queue = append(queue, tr.next)
+			}
 		}
 	}
 

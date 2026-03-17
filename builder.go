@@ -94,8 +94,8 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 	// Build NFA (always — DFA is derived from NFA).
 	nfa := buildNFA(patterns, b.matchKind, alphabet, useAlpha, b.denseDepth)
 
-	// Decide automaton kind.
-	kind := b.resolveKind(len(patterns), patLens)
+	// Decide automaton kind using actual NFA state count (exact).
+	kind := b.resolveKind(nfa)
 
 	var imp automaton
 	switch kind {
@@ -140,13 +140,11 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 
 // resolveKind picks the concrete automaton kind when AhoCorasickKindAuto.
 //
-// For Standard semantics, we estimate DFA memory as:
-//   sum(patternLengths) × 256 transitions × 4 bytes per stateID
-//
-// This bounds the trie state count from above (shared prefixes reduce it
-// further).  We prefer DFA when the estimate is within 50 MB because the
-// O(1) lookup is faster than NFA binary search + failure-link traversal.
-func (b *AhoCorasickBuilder) resolveKind(numPatterns int, patLens []int32) AhoCorasickKind {
+// Uses the actual NFA state count (available after buildNFA) to compute
+// the exact DFA memory: numStates × 256 × 4 bytes. This is much more
+// accurate than estimating from total pattern bytes, which ignores
+// prefix sharing in the trie.
+func (b *AhoCorasickBuilder) resolveKind(nfa *NFA) AhoCorasickKind {
 	if b.kind != AhoCorasickKindAuto {
 		return b.kind
 	}
@@ -154,13 +152,10 @@ func (b *AhoCorasickBuilder) resolveKind(numPatterns int, patLens []int32) AhoCo
 	if b.matchKind != MatchKindStandard {
 		return AhoCorasickKindDFA
 	}
-	// Estimate DFA memory from total pattern bytes × 256 × 4.
-	var totalLen int64
-	for _, l := range patLens {
-		totalLen += int64(l)
-	}
+	// Exact DFA memory from actual NFA state count.
+	dfaMem := int64(len(nfa.states)) * 256 * 4
 	const dfaMemLimit = 50 << 20 // 50 MB
-	if totalLen*256*4 <= dfaMemLimit {
+	if dfaMem <= dfaMemLimit {
 		return AhoCorasickKindDFA
 	}
 	return AhoCorasickKindContiguousNFA

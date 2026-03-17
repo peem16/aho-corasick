@@ -113,6 +113,36 @@ func TestFindAll_Standard_Overlapping(t *testing.T) {
 	}
 }
 
+func TestFindOverlappingAll(t *testing.T) {
+	// Verify FindOverlappingAll produces the same results as FindOverlappingIter.
+	a := mustNew(t, []string{"aa", "a", "aab"})
+	hay := []byte("aab aaa")
+
+	// Collect via iterator.
+	var iterMs []ac.Match
+	it := a.FindOverlappingIter(hay)
+	for {
+		m, ok := it.Next()
+		if !ok {
+			break
+		}
+		iterMs = append(iterMs, m)
+	}
+	it.Close()
+
+	// Collect via FindOverlappingAll.
+	allMs := a.FindOverlappingAll(hay)
+
+	if len(allMs) != len(iterMs) {
+		t.Fatalf("FindOverlappingAll returned %d matches, iter returned %d", len(allMs), len(iterMs))
+	}
+	for i := range allMs {
+		if allMs[i] != iterMs[i] {
+			t.Errorf("match %d: FindOverlappingAll=%v, iter=%v", i, allMs[i], iterMs[i])
+		}
+	}
+}
+
 func TestIsMatch(t *testing.T) {
 	a := mustNew(t, []string{"foo", "bar"})
 	if !a.IsMatchString("the bar is here") {

@@ -428,3 +428,65 @@ func BenchmarkFindAll_NFA_10000Patterns_1MB(b *testing.B) {
 		_ = a.FindAll(hay)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Diverse first-byte benchmarks — tests wider prefilter (4+ distinct bytes)
+// ---------------------------------------------------------------------------
+
+// diversePatterns generates N patterns with diverse first bytes.
+// Patterns cycle through lowercase letters: "a_word0", "b_word1", ..., "z_word25", "a_word26", ...
+func diversePatterns(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		ch := byte('a') + byte(i%26)
+		out[i] = fmt.Sprintf("%c_word%d", ch, i)
+	}
+	return out
+}
+
+// fewFirstBytePatterns generates N patterns cycling through 4 distinct first bytes.
+// Tests the SIMD-accelerated prefilter for 4 distinct first bytes.
+func fewFirstBytePatterns(n int) []string {
+	prefixes := []byte{'a', 'b', 'c', 'd'}
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("%c_item%d", prefixes[i%len(prefixes)], i)
+	}
+	return out
+}
+
+var (
+	diversePats1000         = diversePatterns(1000)
+	diversePats5000         = diversePatterns(5000)
+	fewFirstBytePats1000    = fewFirstBytePatterns(1000)
+	hay1MB_diverse1000      = haystackOf(1<<20, diversePats1000)
+	hay1MB_diverse5000      = haystackOf(1<<20, diversePats5000)
+	hay1MB_fewFirstByte1000 = haystackOf(1<<20, fewFirstBytePats1000)
+)
+
+func BenchmarkFindAll_Auto_1000DiversePatterns_1MB(b *testing.B) {
+	a := buildAC(b, diversePats1000, ac.NewBuilder())
+	hay := hay1MB_diverse1000
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		_ = a.FindAll(hay)
+	}
+}
+
+func BenchmarkFindAll_Auto_5000DiversePatterns_1MB(b *testing.B) {
+	a := buildAC(b, diversePats5000, ac.NewBuilder())
+	hay := hay1MB_diverse5000
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		_ = a.FindAll(hay)
+	}
+}
+
+func BenchmarkFindAll_Auto_1000FewFirstByte_1MB(b *testing.B) {
+	a := buildAC(b, fewFirstBytePats1000, ac.NewBuilder())
+	hay := hay1MB_fewFirstByte1000
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		_ = a.FindAll(hay)
+	}
+}

@@ -20,7 +20,7 @@ import "bytes"
 // heuristic).  For more patterns the cost of the prefilter exceeds its
 // benefit.
 
-const maxPrefilterBytes = 3   // maximum distinct first bytes to prefilter on
+const maxPrefilterBytes = 16  // maximum distinct first bytes to prefilter on
 const maxPrefilterPatterns = 100000 // disable prefilter above this pattern count
 
 // prefilter holds the precomputed acceleration data.
@@ -28,9 +28,9 @@ type prefilter struct {
 	enabled bool
 	// firstSet[b] is true when b is the first byte of at least one pattern.
 	firstSet [256]bool
-	// Cached distinct first bytes for fast path.
-	b0, b1, b2 byte
-	distinct   int
+	// Cached distinct first bytes for SIMD fast path (up to 5).
+	cachedBytes [5]byte
+	distinct    int
 }
 
 // newPrefilter builds a prefilter for the given patterns.
@@ -82,12 +82,8 @@ func newPrefilter(patterns [][]byte, alphabet [256]byte, useAlpha bool) *prefilt
 	pf.enabled = true
 	pf.firstSet = firsts
 	pf.distinct = count
-	pf.b0 = bs[0]
-	if count >= 2 {
-		pf.b1 = bs[1]
-	}
-	if count >= 3 {
-		pf.b2 = bs[2]
+	for i := 0; i < count && i < len(pf.cachedBytes); i++ {
+		pf.cachedBytes[i] = bs[i]
 	}
 	return pf
 }
@@ -102,27 +98,48 @@ func (pf *prefilter) next(haystack []byte, pos int) int {
 		return -1
 	}
 	sub := haystack[pos:]
+	cb := &pf.cachedBytes
 	switch pf.distinct {
 	case 1:
-		i := bytes.IndexByte(sub, pf.b0)
+		i := bytes.IndexByte(sub, cb[0])
 		if i < 0 {
 			return -1
 		}
 		return pos + i
 	case 2:
-		i := indexByteTwo(sub, pf.b0, pf.b1)
+		i := indexByteTwo(sub, cb[0], cb[1])
 		if i < 0 {
 			return -1
 		}
 		return pos + i
 	case 3:
-		i := indexByteThree(sub, pf.b0, pf.b1, pf.b2)
+		i := indexByteThree(sub, cb[0], cb[1], cb[2])
 		if i < 0 {
 			return -1
 		}
 		return pos + i
+	case 4:
+		i := indexByteFour(sub, cb[0], cb[1], cb[2], cb[3])
+		if i < 0 {
+			return -1
+		}
+		return pos + i
+	case 5:
+		i := indexByteFive(sub, cb[0], cb[1], cb[2], cb[3], cb[4])
+		if i < 0 {
+			return -1
+		}
+		return pos + i
+	default:
+		// Bitmap scan for 6+ distinct first bytes.
+		fs := &pf.firstSet
+		for i, b := range sub {
+			if fs[b] {
+				return pos + i
+			}
+		}
+		return -1
 	}
-	return pos // fallback (shouldn't happen)
 }
 
 // indexByteTwo finds the first occurrence of b0 or b1 in s.
@@ -154,6 +171,48 @@ func indexByteThree(s []byte, b0, b1, b2 byte) int {
 	}
 	if min < 0 || (i2 >= 0 && i2 < min) {
 		min = i2
+	}
+	return min
+}
+
+// indexByteFour finds the first occurrence of any of 4 bytes in s.
+func indexByteFour(s []byte, b0, b1, b2, b3 byte) int {
+	i0 := bytes.IndexByte(s, b0)
+	i1 := bytes.IndexByte(s, b1)
+	i2 := bytes.IndexByte(s, b2)
+	i3 := bytes.IndexByte(s, b3)
+	min := i0
+	if min < 0 || (i1 >= 0 && i1 < min) {
+		min = i1
+	}
+	if min < 0 || (i2 >= 0 && i2 < min) {
+		min = i2
+	}
+	if min < 0 || (i3 >= 0 && i3 < min) {
+		min = i3
+	}
+	return min
+}
+
+// indexByteFive finds the first occurrence of any of 5 bytes in s.
+func indexByteFive(s []byte, b0, b1, b2, b3, b4 byte) int {
+	i0 := bytes.IndexByte(s, b0)
+	i1 := bytes.IndexByte(s, b1)
+	i2 := bytes.IndexByte(s, b2)
+	i3 := bytes.IndexByte(s, b3)
+	i4 := bytes.IndexByte(s, b4)
+	min := i0
+	if min < 0 || (i1 >= 0 && i1 < min) {
+		min = i1
+	}
+	if min < 0 || (i2 >= 0 && i2 < min) {
+		min = i2
+	}
+	if min < 0 || (i3 >= 0 && i3 < min) {
+		min = i3
+	}
+	if min < 0 || (i4 >= 0 && i4 < min) {
+		min = i4
 	}
 	return min
 }

@@ -162,7 +162,7 @@ func (it *FindIter) nextNFA() (Match, bool) {
 				tlen := int(transLen[state])
 				tr := transBuf[tbase : tbase+tlen]
 				found := false
-				if tlen <= 4 {
+				if tlen <= 8 {
 					for i := 0; i < tlen; i++ {
 						if tr[i].b == b {
 							state = tr[i].next
@@ -449,7 +449,7 @@ func (it *FindOverlappingIter) nextNFA() (Match, bool) {
 				tlen := int(transLen[state])
 				tr := transBuf[tbase : tbase+tlen]
 				found := false
-				if tlen <= 4 {
+				if tlen <= 8 {
 					// Linear scan for small transition counts.
 					for i := 0; i < tlen; i++ {
 						if tr[i].b == b {
@@ -581,7 +581,6 @@ func (it *FindOverlappingIter) nextDFA() (Match, bool) {
 		if useAlpha {
 			b = dfa.alphabet[b]
 		}
-		// O(1) DFA transition — no failure links needed.
 		state = trans[int(state)<<8|int(b)]
 
 		if base := outBase[state]; base >= 0 {
