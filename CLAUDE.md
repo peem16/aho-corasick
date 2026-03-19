@@ -49,7 +49,7 @@ Two backends implement the internal `automaton` interface (`match.go`):
 
 Dead states in the DFA drive leftmost semantics: once a dead state is reached, the accumulated candidate match is emitted.
 
-### Rune-based NFA (`rune_ahocorasick.go`)
+### Rune-based NFA with Double-Array Trie (`rune_ahocorasick.go`)
 
 A separate `RuneAhoCorasick` type operates on `[]rune` instead of `[]byte`. Designed for scripts where each character is 3+ bytes in UTF-8 (Thai, CJK, etc.) — reduces transitions per character from 3x (byte) to 1x (rune).
 
@@ -63,21 +63,22 @@ A separate `RuneAhoCorasick` type operates on `[]rune` instead of `[]byte`. Desi
 - `PatternCount() int`, `Pattern(id PatternID) []rune`, `PatternRunes(id PatternID) []rune`
 
 **Key internals**:
-- **Compact rune alphabet**: `runeTable []uint16` maps `(rune - minRune)` → 1-based alphabet index (0 = not in any pattern). Only runes that appear in patterns get an index.
-- **Unified dense transition table**: `denseTrans []stateID` covers start state + shallow states (depth ≤ 5). `denseBase []int32` holds pre-multiplied offsets (`stateIdx * alphaSize`). States without dense tables have `denseBase[s] = -1` and fall back to sorted binary search on `transBuf`.
-- **Output flag (bit 31)**: Each `denseTrans` entry encodes `targetState | outputFlag`. The hot path skips the output drain when the flag is clear — avoids a random memory load in the common no-match case.
-- **`unsafe.Pointer` hot loop**: `OverlappingPatternSet` uses `unsafe.Add` for haystack, runeTable, denseTrans, and denseBase access to eliminate Go bounds checks.
-- **Separate `outputOff []int32`**: Output offsets stored separately from `nfaState` for better cache-line utilization.
-- **NFA-only**: No DFA variant — rune alphabet is too large for full dense DFA tables.
+- **Double-array trie**: `daBase[]int32` + `daCheck[]int32` for compact O(1) transitions. Transition formula: `t = (daBase[state] & 0x7FFFFFFF) + alpha; if daCheck[t] == state → next = t`. Failure links `daFail[]int32` followed on transition miss.
+- **Compact rune alphabet**: `runeTable []uint16` maps `(rune - minRune)` → 1-based alphabet index (0 = not in any pattern). Only runes that appear in patterns get an index. Keeps double-array codes small (~50-200 vs 65536 for raw Unicode).
+- **Output flag (bit 31)**: `daBase[slot]` high bit indicates pattern output exists. Hot path checks `daBase[state] < 0` to skip output drain in the common no-match case.
+- **`unsafe.Pointer` hot loop**: `OverlappingPatternSet` uses `unsafe.Add` for haystack, runeTable, daBase, daCheck, and daFail access to eliminate Go bounds checks.
+- **Memory**: ~8 bytes per DA slot. Typical 50-state machine uses ~300-500 slots = **2.4-4KB**, vs ~40KB for previous dense-table approach. **10-15x reduction** → fits in L1 cache (critical for per-campaign matching with 2639+ cold machines).
+- **NFA-only**: No DFA variant — compact double-array is already cache-optimal.
 
 **Performance** (Thai text, 10 patterns, Intel i7-14700KF):
-| Variant | ns/op | vs Byte |
-|---------|-------|---------|
-| Byte NFA | ~584 | baseline |
-| Rune v1 (sparse only) | ~509 | 1.1x |
-| Rune v2 (dense tables) | ~247 | 2.3x |
-| Rune v3 (unified dense) | ~213 | 2.7x |
-| Rune v4 (unsafe + output flag) | ~196 | 3.0x |
+| Variant | ns/op | Per-campaign (100) | vs Byte |
+|---------|-------|--------------------|---------|
+| Byte NFA | ~275 | — | baseline |
+| Rune v1 (sparse only) | ~509 | — | 1.1x |
+| Rune v2 (dense tables) | ~247 | — | 2.3x |
+| Rune v3 (unified dense) | ~213 | — | 2.7x |
+| Rune v5 (all-dense) | ~181 | ~18,500 | 3.1x |
+| **Rune v6 (double-array)** | **~80** | **~5,060** | **3.4x** |
 
 ### Key design choices
 
