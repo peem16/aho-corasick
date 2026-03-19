@@ -84,6 +84,12 @@ type RuneAhoCorasick struct {
 	// dfaNext[slot * alphaSize + alpha] = next DA slot.
 	// Eliminates failure-link following in the scan hot path.
 	dfaNext []int32
+
+	// Interleaved DA (optional, built by BuildVec).
+	// Layout: [base0, check0, fail0, outOff0, base1, check1, fail1, outOff1, ...]
+	// 16 bytes per slot. Loading check[t] prefetches base[t] in the same
+	// cache line → saves one L3 miss per rune on the next iteration.
+	daVec []int32
 }
 
 // NewRune builds a rune-based Aho-Corasick automaton from rune patterns.
@@ -301,6 +307,144 @@ func (ra *RuneAhoCorasick) OverlappingPatternSetDFATrack(haystack []rune, seen [
 				if !seen[pid] {
 					seen[pid] = true
 					dirty = append(dirty, pid)
+				}
+			}
+		}
+	}
+
+	return dirty
+}
+
+// ---------------------------------------------------------------------------
+// Vectorized scan: interleaved DA (AoS) + alpha pre-conversion
+// ---------------------------------------------------------------------------
+
+// BuildVec creates the interleaved DA layout used by OverlappingPatternSetVecTrack.
+// Layout: 4 × int32 per slot = 16 bytes [base, check, fail, outputOff].
+// When the CPU loads check[t], base[t] is in the same cache line.
+// On the next iteration (state = t), base[t] is already in L1 — one fewer
+// L3 miss per rune compared to the SoA layout.
+//
+// Memory: len(daBase) × 16 bytes. For 943K slots → 14.4 MB.
+func (ra *RuneAhoCorasick) BuildVec() {
+	n := int32(len(ra.daBase))
+	v := make([]int32, n*4)
+	for i := int32(0); i < n; i++ {
+		off := i * 4
+		v[off+0] = ra.daBase[i]
+		v[off+1] = ra.daCheck[i]
+		v[off+2] = ra.daFail[i]
+		v[off+3] = ra.outputOff[i]
+	}
+	ra.daVec = v
+}
+
+// VecMemBytes returns the interleaved DA table size in bytes, or 0 if not built.
+func (ra *RuneAhoCorasick) VecMemBytes() int64 {
+	if ra == nil || ra.daVec == nil {
+		return 0
+	}
+	return int64(len(ra.daVec)) * 4
+}
+
+// OverlappingPatternSetVecTrack uses the interleaved DA layout for
+// cache-friendly scanning. Two-phase approach:
+//  1. Pre-convert all runes to alpha values (tight loop, runeTable in L1).
+//  2. Scan the alpha array using interleaved DA (check[t] prefetches base[t]).
+//
+// Must call BuildVec() first.
+func (ra *RuneAhoCorasick) OverlappingPatternSetVecTrack(haystack []rune, seen []bool, dirty []PatternID) []PatternID {
+	if ra == nil || ra.daVec == nil || ra.patCount == 0 {
+		return dirty
+	}
+
+	n := len(haystack)
+	root := ra.rootSlot
+
+	// Root outputs.
+	if ra.outputOff[root] >= 0 {
+		obase := ra.outputOff[root]
+		ol := ra.outLen[root]
+		for i := int32(0); i < ol; i++ {
+			pid := ra.outputs[obase+i]
+			if !seen[pid] {
+				seen[pid] = true
+				dirty = append(dirty, pid)
+			}
+		}
+	}
+	if n == 0 {
+		return dirty
+	}
+
+	// ---- Phase 1: Rune → alpha pre-conversion ----
+	// Stack buffer for small texts (≤ 1024 runes = 4 KB on stack).
+	var alphaBuf [1024]int32
+	var alphas []int32
+	if n <= 1024 {
+		alphas = alphaBuf[:n]
+	} else {
+		alphas = make([]int32, n)
+	}
+
+	rtPtr := unsafe.Pointer(unsafe.SliceData(ra.runeTable))
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
+	minRune := ra.minRune
+	rtLen := ra.runeTableLen
+
+	for i := 0; i < n; i++ {
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(i)*4))
+		off := uint32(r) - minRune
+		if off < rtLen {
+			alphas[i] = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+		}
+		// else alphas[i] stays 0 (zero-initialized).
+	}
+
+	// ---- Phase 2: Interleaved DA scan ----
+	outputs := ra.outputs
+	outLen := ra.outLen
+	daVec := ra.daVec
+	vecPtr := unsafe.Pointer(unsafe.SliceData(daVec))
+
+	state := root
+
+	for i := 0; i < n; i++ {
+		alpha := alphas[i]
+		if alpha == 0 {
+			state = root
+			continue
+		}
+
+		// DA transition with fail chain. Each slot is 16 bytes in vecPtr.
+		for {
+			// base = daVec[state*4 + 0] & 0x7FFFFFFF
+			base := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) & 0x7FFFFFFF
+			t := base + alpha
+			// check = daVec[t*4 + 1] — loading this brings base[t] into cache too!
+			if *(*int32)(unsafe.Add(vecPtr, uintptr(t)*16+4)) == state {
+				state = t
+				break
+			}
+			if state == root {
+				break
+			}
+			// fail = daVec[state*4 + 2]
+			state = *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+8))
+		}
+
+		// Check output flag (bit 31 of base).
+		if *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) < 0 {
+			// outputOff = daVec[state*4 + 3]
+			ooff := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+12))
+			if ooff >= 0 {
+				ol := outLen[state]
+				for j := int32(0); j < ol; j++ {
+					pid := outputs[ooff+j]
+					if !seen[pid] {
+						seen[pid] = true
+						dirty = append(dirty, pid)
+					}
 				}
 			}
 		}

@@ -622,3 +622,65 @@ func TestRuneDFA_Stats(t *testing.T) {
 		t.Errorf("DFA mem=%d expected=%d", mem, expected)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Vec (interleaved DA) tests
+// ---------------------------------------------------------------------------
+
+func TestRuneVec_MatchesNFA(t *testing.T) {
+	patterns := []string{"he", "she", "his", "hers", "สวัสดี", "ครับ", "สวัส"}
+	ra := buildRune(t, patterns...)
+	ra.BuildVec()
+
+	haystacks := []string{
+		"ushers",
+		"สวัสดีครับ",
+		"hello she said to his hers",
+		"no match here",
+		"",
+		"สวัสดีครับ ushers",
+	}
+
+	for _, h := range haystacks {
+		hay := []rune(h)
+		seenNFA := make([]bool, ra.PatternCount())
+		seenVec := make([]bool, ra.PatternCount())
+
+		dirtyNFA := ra.OverlappingPatternSetTrack(hay, seenNFA, nil)
+		dirtyVec := ra.OverlappingPatternSetVecTrack(hay, seenVec, nil)
+
+		for i := range seenNFA {
+			if seenNFA[i] != seenVec[i] {
+				t.Errorf("haystack=%q pattern[%d]=%q: NFA=%v Vec=%v",
+					h, i, patterns[i], seenNFA[i], seenVec[i])
+			}
+		}
+		if len(dirtyNFA) != len(dirtyVec) {
+			t.Errorf("haystack=%q: dirtyNFA=%d dirtyVec=%d", h, len(dirtyNFA), len(dirtyVec))
+		}
+	}
+}
+
+func TestRuneVec_LargeText(t *testing.T) {
+	// Test with text longer than stack buffer (1024 runes).
+	ra := buildRune(t, "ab", "cd", "ef")
+	ra.BuildVec()
+
+	// Create text with 2000 runes.
+	var buf []rune
+	for i := 0; i < 500; i++ {
+		buf = append(buf, []rune("abcdefgh")...)
+	}
+	hay := buf[:2000]
+
+	seenNFA := make([]bool, ra.PatternCount())
+	seenVec := make([]bool, ra.PatternCount())
+	ra.OverlappingPatternSetTrack(hay, seenNFA, nil)
+	ra.OverlappingPatternSetVecTrack(hay, seenVec, nil)
+
+	for i := range seenNFA {
+		if seenNFA[i] != seenVec[i] {
+			t.Errorf("pattern %d: NFA=%v Vec=%v", i, seenNFA[i], seenVec[i])
+		}
+	}
+}
