@@ -427,3 +427,317 @@ func TestBinarySafe(t *testing.T) {
 		t.Errorf("got [%d,%d), want [1,4)", m.Start(), m.End())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// PatternBytes
+// ---------------------------------------------------------------------------
+
+func TestPatternBytes(t *testing.T) {
+	a := mustNew(t, []string{"abc", "def", "ghi"})
+	for i := 0; i < a.PatternCount(); i++ {
+		got := a.PatternBytes(ac.PatternID(i))
+		want := a.Pattern(ac.PatternID(i))
+		if string(got) != string(want) {
+			t.Errorf("PatternBytes(%d) = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestPatternBytes_SharesBacking(t *testing.T) {
+	a := mustNew(t, []string{"hello"})
+	b1 := a.PatternBytes(0)
+	b2 := a.PatternBytes(0)
+	// Both should point to the same backing array.
+	if &b1[0] != &b2[0] {
+		t.Error("PatternBytes should return the same backing slice")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FindAllAppend
+// ---------------------------------------------------------------------------
+
+func TestFindAllAppend_MatchesFindAll(t *testing.T) {
+	a := mustNew(t, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+
+	want := a.FindAll(haystack)
+	got := a.FindAllAppend(nil, haystack)
+
+	if len(got) != len(want) {
+		t.Fatalf("FindAllAppend returned %d matches, FindAll returned %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("match[%d]: got %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFindAllAppend_ReusesSlice(t *testing.T) {
+	a := mustNew(t, []string{"ab", "cd"})
+	buf := make([]ac.Match, 0, 64)
+
+	for i := 0; i < 10; i++ {
+		result := a.FindAllAppend(buf, []byte("abcd"))
+		if len(result) != 2 {
+			t.Fatalf("iteration %d: got %d matches, want 2", i, len(result))
+		}
+		// Verify reuse: result should share the backing array with buf.
+		if cap(result) < 64 {
+			t.Errorf("iteration %d: backing array not reused (cap=%d)", i, cap(result))
+		}
+		buf = result
+	}
+}
+
+func TestFindAllAppend_NilAutomaton(t *testing.T) {
+	a, _ := ac.New(nil)
+	got := a.FindAllAppend(make([]ac.Match, 0, 8), []byte("hello"))
+	if len(got) != 0 {
+		t.Errorf("expected 0 matches for nil automaton, got %d", len(got))
+	}
+}
+
+func TestFindAllAppend_EmptyHaystack(t *testing.T) {
+	a := mustNew(t, []string{"abc"})
+	got := a.FindAllAppend(nil, []byte(""))
+	if len(got) != 0 {
+		t.Errorf("expected 0 matches for empty haystack, got %d", len(got))
+	}
+}
+
+func TestFindAllAppend_NoMatch(t *testing.T) {
+	a := mustNew(t, []string{"xyz"})
+	got := a.FindAllAppend(nil, []byte("hello world"))
+	if len(got) != 0 {
+		t.Errorf("expected 0 matches, got %d", len(got))
+	}
+}
+
+func TestFindAllAppendString(t *testing.T) {
+	a := mustNew(t, []string{"he", "she"})
+	got := a.FindAllAppendString(nil, "ushers")
+	want := a.FindAllString("ushers")
+	if len(got) != len(want) {
+		t.Fatalf("got %d matches, want %d", len(got), len(want))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FindOverlappingAllAppend
+// ---------------------------------------------------------------------------
+
+func TestFindOverlappingAllAppend_MatchesFindOverlappingAll(t *testing.T) {
+	a := mustNew(t, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+
+	want := a.FindOverlappingAll(haystack)
+	got := a.FindOverlappingAllAppend(nil, haystack)
+
+	if len(got) != len(want) {
+		t.Fatalf("FindOverlappingAllAppend returned %d matches, FindOverlappingAll returned %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("match[%d]: got %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFindOverlappingAllAppend_ReusesSlice(t *testing.T) {
+	a := mustNew(t, []string{"ab", "b"})
+	buf := make([]ac.Match, 0, 64)
+
+	for i := 0; i < 10; i++ {
+		result := a.FindOverlappingAllAppend(buf, []byte("ab"))
+		if len(result) != 2 {
+			t.Fatalf("iteration %d: got %d matches, want 2", i, len(result))
+		}
+		if cap(result) < 64 {
+			t.Errorf("iteration %d: backing array not reused (cap=%d)", i, cap(result))
+		}
+		buf = result
+	}
+}
+
+func TestFindOverlappingAllAppend_NilAutomaton(t *testing.T) {
+	a, _ := ac.New(nil)
+	got := a.FindOverlappingAllAppend(make([]ac.Match, 0, 8), []byte("hello"))
+	if len(got) != 0 {
+		t.Errorf("expected 0 matches for nil automaton, got %d", len(got))
+	}
+}
+
+func TestFindOverlappingAllAppendString(t *testing.T) {
+	a := mustNew(t, []string{"he", "she"})
+	got := a.FindOverlappingAllAppendString(nil, "ushers")
+	want := a.FindOverlappingAllString("ushers")
+	if len(got) != len(want) {
+		t.Fatalf("got %d matches, want %d", len(got), len(want))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FindAllAppend / FindOverlappingAllAppend with forced NFA
+// ---------------------------------------------------------------------------
+
+func TestFindAllAppend_NFA(t *testing.T) {
+	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+
+	want := a.FindAll(haystack)
+	got := a.FindAllAppend(nil, haystack)
+
+	if len(got) != len(want) {
+		t.Fatalf("NFA FindAllAppend: got %d matches, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("NFA match[%d]: got %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFindOverlappingAllAppend_NFA(t *testing.T) {
+	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+
+	want := a.FindOverlappingAll(haystack)
+	got := a.FindOverlappingAllAppend(nil, haystack)
+
+	if len(got) != len(want) {
+		t.Fatalf("NFA FindOverlappingAllAppend: got %d matches, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("NFA match[%d]: got %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CountAll
+// ---------------------------------------------------------------------------
+
+func TestCountAll_MatchesLen(t *testing.T) {
+	a := mustNew(t, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+	want := len(a.FindAll(haystack))
+	got := a.CountAll(haystack)
+	if got != want {
+		t.Errorf("CountAll = %d, want %d", got, want)
+	}
+}
+
+func TestCountAll_NoMatch(t *testing.T) {
+	a := mustNew(t, []string{"xyz"})
+	if n := a.CountAll([]byte("hello")); n != 0 {
+		t.Errorf("CountAll = %d, want 0", n)
+	}
+}
+
+func TestCountAll_EmptyHaystack(t *testing.T) {
+	a := mustNew(t, []string{"abc"})
+	if n := a.CountAll([]byte("")); n != 0 {
+		t.Errorf("CountAll = %d, want 0", n)
+	}
+}
+
+func TestCountAll_NilAutomaton(t *testing.T) {
+	a, _ := ac.New(nil)
+	if n := a.CountAll([]byte("hello")); n != 0 {
+		t.Errorf("CountAll = %d, want 0", n)
+	}
+}
+
+func TestCountAllString(t *testing.T) {
+	a := mustNew(t, []string{"ab", "cd"})
+	want := len(a.FindAllString("abcdef"))
+	got := a.CountAllString("abcdef")
+	if got != want {
+		t.Errorf("CountAllString = %d, want %d", got, want)
+	}
+}
+
+func TestCountAll_NFA(t *testing.T) {
+	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+	want := len(a.FindAll(haystack))
+	got := a.CountAll(haystack)
+	if got != want {
+		t.Errorf("NFA CountAll = %d, want %d", got, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CountOverlapping
+// ---------------------------------------------------------------------------
+
+func TestCountOverlapping_MatchesLen(t *testing.T) {
+	a := mustNew(t, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+	want := len(a.FindOverlappingAll(haystack))
+	got := a.CountOverlapping(haystack)
+	if got != want {
+		t.Errorf("CountOverlapping = %d, want %d", got, want)
+	}
+}
+
+func TestCountOverlapping_NoMatch(t *testing.T) {
+	a := mustNew(t, []string{"xyz"})
+	if n := a.CountOverlapping([]byte("hello")); n != 0 {
+		t.Errorf("CountOverlapping = %d, want 0", n)
+	}
+}
+
+func TestCountOverlapping_EmptyHaystack(t *testing.T) {
+	a := mustNew(t, []string{"abc"})
+	if n := a.CountOverlapping([]byte("")); n != 0 {
+		t.Errorf("CountOverlapping = %d, want 0", n)
+	}
+}
+
+func TestCountOverlapping_NilAutomaton(t *testing.T) {
+	a, _ := ac.New(nil)
+	if n := a.CountOverlapping([]byte("hello")); n != 0 {
+		t.Errorf("CountOverlapping = %d, want 0", n)
+	}
+}
+
+func TestCountOverlappingString(t *testing.T) {
+	a := mustNew(t, []string{"ab", "b"})
+	want := len(a.FindOverlappingAllString("ab"))
+	got := a.CountOverlappingString("ab")
+	if got != want {
+		t.Errorf("CountOverlappingString = %d, want %d", got, want)
+	}
+}
+
+func TestCountOverlapping_NFA(t *testing.T) {
+	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+	want := len(a.FindOverlappingAll(haystack))
+	got := a.CountOverlapping(haystack)
+	if got != want {
+		t.Errorf("NFA CountOverlapping = %d, want %d", got, want)
+	}
+}
+
+func TestCountOverlapping_ManyPatterns(t *testing.T) {
+	patterns := make([]string, 200)
+	for i := range patterns {
+		patterns[i] = fmt.Sprintf("p%d", i)
+	}
+	a := mustNew(t, patterns)
+	haystack := []byte(strings.Join(patterns, " "))
+	want := len(a.FindOverlappingAll(haystack))
+	got := a.CountOverlapping(haystack)
+	if got != want {
+		t.Errorf("CountOverlapping (200 patterns) = %d, want %d", got, want)
+	}
+}

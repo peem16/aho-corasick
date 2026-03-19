@@ -427,3 +427,139 @@ func BenchmarkMatchKind_LeftmostLongest_NFA_Large_1MB(b *testing.B) {
 		_ = a.FindAll(hay1MB_large)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Append variant benchmarks — demonstrate zero-allocation reuse
+// ---------------------------------------------------------------------------
+
+func BenchmarkFindAllAppend_Reuse_Small_1MB(b *testing.B) {
+	a := buildAC(b, smallPatterns, ac.NewBuilder())
+	hay := hay1MB
+	b.SetBytes(int64(len(hay)))
+	buf := make([]ac.Match, 0, 256)
+	for b.Loop() {
+		buf = a.FindAllAppend(buf[:0], hay)
+	}
+}
+
+func BenchmarkFindAllAppend_Fresh_Small_1MB(b *testing.B) {
+	a := buildAC(b, smallPatterns, ac.NewBuilder())
+	hay := hay1MB
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		_ = a.FindAll(hay)
+	}
+}
+
+func BenchmarkFindOverlappingAllAppend_Reuse_Small_1MB(b *testing.B) {
+	a := buildAC(b, smallPatterns, ac.NewBuilder())
+	hay := hay1MB
+	b.SetBytes(int64(len(hay)))
+	buf := make([]ac.Match, 0, 256)
+	for b.Loop() {
+		buf = a.FindOverlappingAllAppend(buf[:0], hay)
+	}
+}
+
+func BenchmarkFindOverlappingAllAppend_Fresh_Small_1MB(b *testing.B) {
+	a := buildAC(b, smallPatterns, ac.NewBuilder())
+	hay := hay1MB
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		_ = a.FindOverlappingAll(hay)
+	}
+}
+
+// Per-campaign loop simulation: many machines, short haystack, reuse buf
+func BenchmarkFindOverlappingAllAppend_PerCampaignLoop(b *testing.B) {
+	// Simulate 100 campaign machines with different patterns
+	machines := make([]*ac.AhoCorasick, 100)
+	for i := range machines {
+		pats := make([]string, 5)
+		for j := range pats {
+			pats[j] = fmt.Sprintf("campaign%d_keyword%d", i, j)
+		}
+		machines[i] = buildAC(b, pats, ac.NewBuilder())
+	}
+	hay := []byte(strings.Repeat("some text with campaign50_keyword2 embedded in it ", 10))
+	b.SetBytes(int64(len(hay)) * int64(len(machines)))
+
+	buf := make([]ac.Match, 0, 64)
+	for b.Loop() {
+		for _, m := range machines {
+			buf = m.FindOverlappingAllAppend(buf[:0], hay)
+		}
+	}
+}
+
+// Same loop without reuse for comparison
+func BenchmarkFindOverlappingAll_PerCampaignLoop(b *testing.B) {
+	machines := make([]*ac.AhoCorasick, 100)
+	for i := range machines {
+		pats := make([]string, 5)
+		for j := range pats {
+			pats[j] = fmt.Sprintf("campaign%d_keyword%d", i, j)
+		}
+		machines[i] = buildAC(b, pats, ac.NewBuilder())
+	}
+	hay := []byte(strings.Repeat("some text with campaign50_keyword2 embedded in it ", 10))
+	b.SetBytes(int64(len(hay)) * int64(len(machines)))
+
+	for b.Loop() {
+		for _, m := range machines {
+			_ = m.FindOverlappingAll(hay)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Count benchmarks — zero allocation
+// ---------------------------------------------------------------------------
+
+func BenchmarkCountOverlapping_Small_1MB(b *testing.B) {
+	a := buildAC(b, smallPatterns, ac.NewBuilder())
+	hay := hay1MB
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		_ = a.CountOverlapping(hay)
+	}
+}
+
+func BenchmarkCountAll_Small_1MB(b *testing.B) {
+	a := buildAC(b, smallPatterns, ac.NewBuilder())
+	hay := hay1MB
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		_ = a.CountAll(hay)
+	}
+}
+
+func BenchmarkCountOverlapping_Large_1MB(b *testing.B) {
+	a := buildAC(b, largePatterns, ac.NewBuilder())
+	hay := hay1MB_large
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		_ = a.CountOverlapping(hay)
+	}
+}
+
+// PatternBytes benchmark
+func BenchmarkPatternBytes_vs_Pattern(b *testing.B) {
+	a := buildAC(b, largePatterns, ac.NewBuilder())
+	n := a.PatternCount()
+
+	b.Run("Pattern_Copy", func(b *testing.B) {
+		for b.Loop() {
+			for i := 0; i < n; i++ {
+				_ = a.Pattern(ac.PatternID(i))
+			}
+		}
+	})
+	b.Run("PatternBytes_ZeroCopy", func(b *testing.B) {
+		for b.Loop() {
+			for i := 0; i < n; i++ {
+				_ = a.PatternBytes(ac.PatternID(i))
+			}
+		}
+	})
+}
