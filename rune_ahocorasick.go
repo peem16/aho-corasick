@@ -637,6 +637,105 @@ func (ra *RuneAhoCorasick) OverlappingPatternSet(haystack []rune, seen []bool) {
 	}
 }
 
+// OverlappingPatternSetTrack is like OverlappingPatternSet but also appends
+// the IDs of matched patterns to dirty, returning the updated slice.
+// This lets callers clear only the entries that were set, instead of
+// resetting the entire seen[] array — critical when PatternCount() is large
+// (e.g. 149K patterns in a unified machine) but only a few hundred match.
+//
+// Usage:
+//
+//	dirty = machine.OverlappingPatternSetTrack(text, seen, dirty[:0])
+//	// ... use seen[] ...
+//	for _, id := range dirty { seen[id] = false }
+func (ra *RuneAhoCorasick) OverlappingPatternSetTrack(haystack []rune, seen []bool, dirty []PatternID) []PatternID {
+	if ra == nil || ra.patCount == 0 && len(ra.daBase) == 0 {
+		return dirty
+	}
+
+	n := len(haystack)
+	rootSlot := ra.rootSlot
+
+	// Check for empty-pattern output at start.
+	if ra.outputOff[rootSlot] >= 0 {
+		obase := ra.outputOff[rootSlot]
+		ol := ra.outLen[rootSlot]
+		for i := int32(0); i < ol; i++ {
+			pid := ra.outputs[obase+i]
+			if !seen[pid] {
+				seen[pid] = true
+				dirty = append(dirty, pid)
+			}
+		}
+	}
+
+	if n == 0 {
+		return dirty
+	}
+
+	outputs := ra.outputs
+	outLen := ra.outLen
+	outputOff := ra.outputOff
+	runeTable := ra.runeTable
+	runeTableLen := ra.runeTableLen
+	minRune := ra.minRune
+
+	daBase := ra.daBase
+	daCheck := ra.daCheck
+	daFail := ra.daFail
+
+	// Unsafe base pointers for bounds-check-free access.
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
+	rtPtr := unsafe.Pointer(unsafe.SliceData(runeTable))
+	dbPtr := unsafe.Pointer(unsafe.SliceData(daBase))
+	dcPtr := unsafe.Pointer(unsafe.SliceData(daCheck))
+	dfPtr := unsafe.Pointer(unsafe.SliceData(daFail))
+
+	state := rootSlot
+
+	for pos := 0; pos < n; pos++ {
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(pos)*4))
+
+		off := uint32(r) - minRune
+		alpha := int32(0)
+		if off < runeTableLen {
+			alpha = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+		}
+
+		if alpha == 0 {
+			state = rootSlot
+			continue
+		}
+
+		for {
+			base := *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4)) & 0x7FFFFFFF
+			t := base + alpha
+			if *(*int32)(unsafe.Add(dcPtr, uintptr(t)*4)) == state {
+				state = t
+				break
+			}
+			if state == rootSlot {
+				break
+			}
+			state = *(*int32)(unsafe.Add(dfPtr, uintptr(state)*4))
+		}
+
+		if *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4)) < 0 {
+			obase := outputOff[state]
+			ol := outLen[state]
+			for i := int32(0); i < ol; i++ {
+				pid := outputs[obase+i]
+				if !seen[pid] {
+					seen[pid] = true
+					dirty = append(dirty, pid)
+				}
+			}
+		}
+	}
+
+	return dirty
+}
+
 // ---------------------------------------------------------------------------
 // Search: FindOverlappingAll
 // ---------------------------------------------------------------------------

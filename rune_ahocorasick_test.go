@@ -492,3 +492,62 @@ func BenchmarkRuneFindOverlappingAll_Thai(b *testing.B) {
 	}
 	_ = fmt.Sprintf("%d", len(buf)) // prevent dead code elimination
 }
+
+// ---------------------------------------------------------------------------
+// OverlappingPatternSetTrack tests
+// ---------------------------------------------------------------------------
+
+func TestRuneOverlappingPatternSetTrack_Basic(t *testing.T) {
+	ra := buildRune(t, "he", "she", "his", "hers")
+	hay := []rune("ushers")
+	seen := make([]bool, ra.PatternCount())
+	var dirty []PatternID
+
+	dirty = ra.OverlappingPatternSetTrack(hay, seen, dirty[:0])
+
+	// Same results as OverlappingPatternSet.
+	want := map[string]bool{"he": true, "she": true, "hers": true}
+	for i, s := range []string{"he", "she", "his", "hers"} {
+		if seen[i] != want[s] {
+			t.Errorf("pattern %q: seen=%v want=%v", s, seen[i], want[s])
+		}
+	}
+
+	// dirty should contain exactly the matched pattern IDs.
+	if len(dirty) != 3 {
+		t.Fatalf("dirty len=%d want 3", len(dirty))
+	}
+
+	// Clear via dirty list and verify all false.
+	for _, id := range dirty {
+		seen[id] = false
+	}
+	for i := range seen {
+		if seen[i] {
+			t.Errorf("seen[%d] still true after dirty clear", i)
+		}
+	}
+}
+
+func TestRuneOverlappingPatternSetTrack_NoMatch(t *testing.T) {
+	ra := buildRune(t, "foo", "bar")
+	hay := []rune("baz")
+	seen := make([]bool, ra.PatternCount())
+	dirty := ra.OverlappingPatternSetTrack(hay, seen, nil)
+
+	if len(dirty) != 0 {
+		t.Errorf("dirty len=%d want 0", len(dirty))
+	}
+}
+
+func TestRuneOverlappingPatternSetTrack_NoDuplicates(t *testing.T) {
+	// "ab" appears twice in "ababab" but dirty should have it once.
+	ra := buildRune(t, "ab")
+	hay := []rune("ababab")
+	seen := make([]bool, ra.PatternCount())
+	dirty := ra.OverlappingPatternSetTrack(hay, seen, nil)
+
+	if len(dirty) != 1 {
+		t.Errorf("dirty len=%d want 1 (no duplicates)", len(dirty))
+	}
+}
