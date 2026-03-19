@@ -1738,6 +1738,409 @@ func (ac *AhoCorasick) countOverlappingNFA(nfa *NFA, haystack []byte) int {
 }
 
 // ---------------------------------------------------------------------------
+// OverlappingPatternSet / AllPatternSet — zero-allocation pattern set marking
+// ---------------------------------------------------------------------------
+
+// OverlappingPatternSet marks seen[patternID] = true for every overlapping
+// match found in haystack. The caller must provide a seen slice with length
+// >= ac.PatternCount(). Use clear(seen) to reset between calls.
+// This is the most allocation-efficient way to determine which patterns
+// matched, as it creates no Match structs and automatically deduplicates.
+// Only meaningful for MatchKindStandard.
+func (ac *AhoCorasick) OverlappingPatternSet(haystack []byte, seen []bool) {
+	if ac.imp == nil {
+		return
+	}
+	if ac.dfa != nil {
+		ac.overlappingPatternSetDFA(ac.dfa, haystack, seen)
+		return
+	}
+	if ac.nfa != nil {
+		ac.overlappingPatternSetNFA(ac.nfa, haystack, seen)
+		return
+	}
+	// Fallback: use iterator.
+	it := ac.FindOverlappingIter(haystack)
+	for {
+		m, ok := it.Next()
+		if !ok {
+			break
+		}
+		seen[m.PatternID()] = true
+	}
+	it.Close()
+}
+
+// OverlappingPatternSetString is a convenience wrapper for string haystacks.
+func (ac *AhoCorasick) OverlappingPatternSetString(haystack string, seen []bool) {
+	ac.OverlappingPatternSet([]byte(haystack), seen)
+}
+
+// overlappingPatternSetDFA marks matched patterns using the DFA.
+func (ac *AhoCorasick) overlappingPatternSetDFA(dfa *DFA, haystack []byte, seen []bool) {
+	pf := ac.pf
+	n := len(haystack)
+
+	trans := dfa.trans
+	outBase := dfa.outBase
+	outBuf := dfa.outBuf
+	outLen := dfa.outLen
+	useAlpha := dfa.useAlpha
+
+	state := startStateID
+
+	// Check for empty-pattern match at start.
+	if outBase[state] >= 0 {
+		base := outBase[state]
+		ol := outLen[state]
+		for i := int32(0); i < ol; i++ {
+			seen[outBuf[base+i]] = true
+		}
+	}
+
+	if n == 0 {
+		return
+	}
+
+	_ = haystack[n-1] // BCE hint
+
+	for pos := 0; pos < n; pos++ {
+		if pf.enabled && state == startStateID {
+			next := pf.next(haystack, pos)
+			if next < 0 {
+				break
+			}
+			pos = next
+		}
+
+		b := haystack[pos]
+		if useAlpha {
+			b = dfa.alphabet[b]
+		}
+		state = trans[int(state)<<8|int(b)]
+
+		if outBase[state] >= 0 {
+			base := outBase[state]
+			ol := outLen[state]
+			for i := int32(0); i < ol; i++ {
+				seen[outBuf[base+i]] = true
+			}
+		}
+	}
+}
+
+// overlappingPatternSetNFA marks matched patterns using the NFA.
+func (ac *AhoCorasick) overlappingPatternSetNFA(nfa *NFA, haystack []byte, seen []bool) {
+	pf := ac.pf
+	n := len(haystack)
+
+	states := nfa.states
+	transBuf := nfa.transBuf
+	transBase := nfa.transBase
+	transLen := nfa.transLen
+	startTrans := &nfa.startTrans
+	denseTrans := nfa.denseTrans
+	denseIdx := nfa.denseIdx
+	outputs := nfa.outputs
+	outLen := nfa.outLen
+	useAlpha := nfa.useAlpha
+
+	state := startStateID
+
+	// Check for empty-pattern match at start.
+	if states[state].outputIdx >= 0 {
+		obase := states[state].outputIdx
+		ol := outLen[state]
+		for i := int32(0); i < ol; i++ {
+			seen[outputs[int32(obase)+i]] = true
+		}
+	}
+
+	if n == 0 {
+		return
+	}
+
+	_ = haystack[n-1]
+
+	for pos := 0; pos < n; pos++ {
+		if pf.enabled && state == startStateID {
+			next := pf.next(haystack, pos)
+			if next < 0 {
+				break
+			}
+			pos = next
+		}
+
+		b := haystack[pos]
+
+		// ---- inlined nextState ----
+		if useAlpha {
+			b = nfa.alphabet[b]
+		}
+		if state == startStateID {
+			state = startTrans[b]
+		} else if di := denseIdx[state]; di >= 0 {
+			state = denseTrans[int(di)<<8|int(b)]
+		} else {
+			for {
+				if state == deadStateID {
+					break
+				}
+				tbase := int(transBase[state])
+				tlen := int(transLen[state])
+				tr := transBuf[tbase : tbase+tlen]
+				found := false
+				if tlen <= 8 {
+					for i := 0; i < tlen; i++ {
+						if tr[i].b == b {
+							state = tr[i].next
+							found = true
+							break
+						}
+						if tr[i].b > b {
+							break
+						}
+					}
+				} else {
+					lo, hi := 0, tlen
+					for lo < hi {
+						mid := int(uint(lo+hi) >> 1)
+						if tr[mid].b < b {
+							lo = mid + 1
+						} else {
+							hi = mid
+						}
+					}
+					if lo < tlen && tr[lo].b == b {
+						state = tr[lo].next
+						found = true
+					}
+				}
+				if found {
+					break
+				}
+				fail := states[state].fail
+				if fail == startStateID {
+					state = startTrans[b]
+					break
+				}
+				if di := denseIdx[fail]; di >= 0 {
+					state = denseTrans[int(di)<<8|int(b)]
+					break
+				}
+				state = fail
+			}
+		}
+		// ---- end inlined nextState ----
+
+		if states[state].outputIdx >= 0 {
+			obase := states[state].outputIdx
+			ol := outLen[state]
+			for i := int32(0); i < ol; i++ {
+				seen[outputs[int32(obase)+i]] = true
+			}
+		}
+	}
+}
+
+// AllPatternSet marks seen[patternID] = true for every non-overlapping match
+// found in haystack. The caller must provide a seen slice with length
+// >= ac.PatternCount(). Only meaningful for MatchKindStandard.
+func (ac *AhoCorasick) AllPatternSet(haystack []byte, seen []bool) {
+	if ac.imp == nil {
+		return
+	}
+	if ac.matchKind == MatchKindStandard {
+		if ac.dfa != nil {
+			ac.allPatternSetDFA(ac.dfa, haystack, seen)
+			return
+		}
+		if ac.nfa != nil {
+			ac.allPatternSetNFA(ac.nfa, haystack, seen)
+			return
+		}
+	}
+	// Fallback: use iterator.
+	it := ac.FindIter(haystack)
+	for {
+		m, ok := it.Next()
+		if !ok {
+			break
+		}
+		seen[m.PatternID()] = true
+	}
+	it.Close()
+}
+
+// AllPatternSetString is a convenience wrapper for string haystacks.
+func (ac *AhoCorasick) AllPatternSetString(haystack string, seen []bool) {
+	ac.AllPatternSet([]byte(haystack), seen)
+}
+
+// allPatternSetDFA marks non-overlapping matched patterns using the DFA.
+func (ac *AhoCorasick) allPatternSetDFA(dfa *DFA, haystack []byte, seen []bool) {
+	pf := ac.pf
+	n := len(haystack)
+
+	if n == 0 {
+		if dfa.outBase[startStateID] >= 0 {
+			seen[dfa.outBuf[dfa.outBase[startStateID]]] = true
+		}
+		return
+	}
+
+	trans := dfa.trans
+	outBase := dfa.outBase
+	outBuf := dfa.outBuf
+	useAlpha := dfa.useAlpha
+
+	state := startStateID
+	pos := 0
+
+	if outBase[state] >= 0 {
+		seen[outBuf[outBase[state]]] = true
+		pos = 1
+		state = startStateID
+	}
+
+	_ = haystack[n-1]
+
+	for pos < n {
+		if pf.enabled && state == startStateID {
+			next := pf.next(haystack, pos)
+			if next < 0 {
+				break
+			}
+			pos = next
+		}
+
+		b := haystack[pos]
+		pos++
+		if useAlpha {
+			b = dfa.alphabet[b]
+		}
+		state = trans[int(state)<<8|int(b)]
+
+		if outBase[state] >= 0 {
+			seen[outBuf[outBase[state]]] = true
+			state = startStateID
+		}
+	}
+}
+
+// allPatternSetNFA marks non-overlapping matched patterns using the NFA.
+func (ac *AhoCorasick) allPatternSetNFA(nfa *NFA, haystack []byte, seen []bool) {
+	pf := ac.pf
+	n := len(haystack)
+
+	states := nfa.states
+	transBuf := nfa.transBuf
+	transBase := nfa.transBase
+	transLen := nfa.transLen
+	startTrans := &nfa.startTrans
+	denseTrans := nfa.denseTrans
+	denseIdx := nfa.denseIdx
+	outputs := nfa.outputs
+	useAlpha := nfa.useAlpha
+
+	if n == 0 {
+		if states[startStateID].outputIdx >= 0 {
+			seen[outputs[states[startStateID].outputIdx]] = true
+		}
+		return
+	}
+
+	state := startStateID
+	pos := 0
+
+	if states[state].outputIdx >= 0 {
+		seen[outputs[states[state].outputIdx]] = true
+		pos = 1
+		state = startStateID
+	}
+
+	_ = haystack[n-1]
+
+	for pos < n {
+		if pf.enabled && state == startStateID {
+			next := pf.next(haystack, pos)
+			if next < 0 {
+				break
+			}
+			pos = next
+		}
+
+		b := haystack[pos]
+		pos++
+
+		// ---- inlined nextState ----
+		if useAlpha {
+			b = nfa.alphabet[b]
+		}
+		if state == startStateID {
+			state = startTrans[b]
+		} else if di := denseIdx[state]; di >= 0 {
+			state = denseTrans[int(di)<<8|int(b)]
+		} else {
+			for {
+				if state == deadStateID {
+					break
+				}
+				tbase := int(transBase[state])
+				tlen := int(transLen[state])
+				tr := transBuf[tbase : tbase+tlen]
+				found := false
+				if tlen <= 8 {
+					for i := 0; i < tlen; i++ {
+						if tr[i].b == b {
+							state = tr[i].next
+							found = true
+							break
+						}
+						if tr[i].b > b {
+							break
+						}
+					}
+				} else {
+					lo, hi := 0, tlen
+					for lo < hi {
+						mid := int(uint(lo+hi) >> 1)
+						if tr[mid].b < b {
+							lo = mid + 1
+						} else {
+							hi = mid
+						}
+					}
+					if lo < tlen && tr[lo].b == b {
+						state = tr[lo].next
+						found = true
+					}
+				}
+				if found {
+					break
+				}
+				fail := states[state].fail
+				if fail == startStateID {
+					state = startTrans[b]
+					break
+				}
+				if di := denseIdx[fail]; di >= 0 {
+					state = denseTrans[int(di)<<8|int(b)]
+					break
+				}
+				state = fail
+			}
+		}
+		// ---- end inlined nextState ----
+
+		if states[state].outputIdx >= 0 {
+			seen[outputs[states[state].outputIdx]] = true
+			state = startStateID
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Iterators
 // ---------------------------------------------------------------------------
 

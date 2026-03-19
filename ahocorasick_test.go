@@ -741,3 +741,215 @@ func TestCountOverlapping_ManyPatterns(t *testing.T) {
 		t.Errorf("CountOverlapping (200 patterns) = %d, want %d", got, want)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// OverlappingPatternSet
+// ---------------------------------------------------------------------------
+
+func patternSetToIDs(seen []bool) []ac.PatternID {
+	var ids []ac.PatternID
+	for i, v := range seen {
+		if v {
+			ids = append(ids, ac.PatternID(i))
+		}
+	}
+	return ids
+}
+
+func findOverlappingToIDs(a *ac.AhoCorasick, haystack []byte) []ac.PatternID {
+	matches := a.FindOverlappingAll(haystack)
+	idSet := make(map[ac.PatternID]bool)
+	for _, m := range matches {
+		idSet[m.PatternID()] = true
+	}
+	var ids []ac.PatternID
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func TestOverlappingPatternSet_MatchesFindOverlappingAll(t *testing.T) {
+	a := mustNew(t, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+
+	seen := make([]bool, a.PatternCount())
+	a.OverlappingPatternSet(haystack, seen)
+	got := patternSetToIDs(seen)
+	want := findOverlappingToIDs(a, haystack)
+
+	if len(got) != len(want) {
+		t.Fatalf("OverlappingPatternSet found %d patterns, FindOverlappingAll found %d unique", len(got), len(want))
+	}
+	wantMap := make(map[ac.PatternID]bool)
+	for _, id := range want {
+		wantMap[id] = true
+	}
+	for _, id := range got {
+		if !wantMap[id] {
+			t.Errorf("OverlappingPatternSet found pattern %d not in FindOverlappingAll", id)
+		}
+	}
+}
+
+func TestOverlappingPatternSet_NoMatch(t *testing.T) {
+	a := mustNew(t, []string{"xyz"})
+	seen := make([]bool, a.PatternCount())
+	a.OverlappingPatternSet([]byte("hello"), seen)
+	for i, v := range seen {
+		if v {
+			t.Errorf("seen[%d] should be false", i)
+		}
+	}
+}
+
+func TestOverlappingPatternSet_EmptyHaystack(t *testing.T) {
+	a := mustNew(t, []string{"abc"})
+	seen := make([]bool, a.PatternCount())
+	a.OverlappingPatternSet([]byte(""), seen)
+	for i, v := range seen {
+		if v {
+			t.Errorf("seen[%d] should be false for empty haystack", i)
+		}
+	}
+}
+
+func TestOverlappingPatternSet_NilAutomaton(t *testing.T) {
+	a, _ := ac.New(nil)
+	seen := make([]bool, 10)
+	a.OverlappingPatternSet([]byte("hello"), seen) // should not panic
+}
+
+func TestOverlappingPatternSet_Reuse(t *testing.T) {
+	a := mustNew(t, []string{"abc", "def", "ghi"})
+	seen := make([]bool, a.PatternCount())
+
+	// First search
+	a.OverlappingPatternSet([]byte("abc"), seen)
+	if !seen[0] {
+		t.Error("expected seen[0] = true after first search")
+	}
+
+	// Clear and reuse
+	clear(seen)
+	a.OverlappingPatternSet([]byte("def"), seen)
+	if seen[0] {
+		t.Error("expected seen[0] = false after clear+second search")
+	}
+	if !seen[1] {
+		t.Error("expected seen[1] = true after second search")
+	}
+}
+
+func TestOverlappingPatternSet_NFA(t *testing.T) {
+	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+
+	seen := make([]bool, a.PatternCount())
+	a.OverlappingPatternSet(haystack, seen)
+	got := patternSetToIDs(seen)
+	want := findOverlappingToIDs(a, haystack)
+
+	if len(got) != len(want) {
+		t.Fatalf("NFA OverlappingPatternSet: %d patterns, want %d", len(got), len(want))
+	}
+}
+
+func TestOverlappingPatternSetString(t *testing.T) {
+	a := mustNew(t, []string{"he", "she"})
+	seen := make([]bool, a.PatternCount())
+	a.OverlappingPatternSetString("ushers", seen)
+	if !seen[0] || !seen[1] {
+		t.Errorf("OverlappingPatternSetString: seen=%v, want [true, true]", seen)
+	}
+}
+
+func TestOverlappingPatternSet_ManyPatterns(t *testing.T) {
+	patterns := make([]string, 200)
+	for i := range patterns {
+		patterns[i] = fmt.Sprintf("p%d", i)
+	}
+	a := mustNew(t, patterns)
+	haystack := []byte(strings.Join(patterns, " "))
+
+	seen := make([]bool, a.PatternCount())
+	a.OverlappingPatternSet(haystack, seen)
+
+	gotCount := 0
+	for _, v := range seen {
+		if v {
+			gotCount++
+		}
+	}
+	wantIDs := findOverlappingToIDs(a, haystack)
+	if gotCount != len(wantIDs) {
+		t.Errorf("OverlappingPatternSet (200 patterns): %d matched, want %d", gotCount, len(wantIDs))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AllPatternSet
+// ---------------------------------------------------------------------------
+
+func findAllToIDs(a *ac.AhoCorasick, haystack []byte) []ac.PatternID {
+	matches := a.FindAll(haystack)
+	idSet := make(map[ac.PatternID]bool)
+	for _, m := range matches {
+		idSet[m.PatternID()] = true
+	}
+	var ids []ac.PatternID
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func TestAllPatternSet_MatchesFindAll(t *testing.T) {
+	a := mustNew(t, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+
+	seen := make([]bool, a.PatternCount())
+	a.AllPatternSet(haystack, seen)
+	got := patternSetToIDs(seen)
+	want := findAllToIDs(a, haystack)
+
+	if len(got) != len(want) {
+		t.Fatalf("AllPatternSet found %d patterns, FindAll found %d unique", len(got), len(want))
+	}
+}
+
+func TestAllPatternSet_NoMatch(t *testing.T) {
+	a := mustNew(t, []string{"xyz"})
+	seen := make([]bool, a.PatternCount())
+	a.AllPatternSet([]byte("hello"), seen)
+	for i, v := range seen {
+		if v {
+			t.Errorf("seen[%d] should be false", i)
+		}
+	}
+}
+
+func TestAllPatternSet_NFA(t *testing.T) {
+	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
+	haystack := []byte("ushers")
+
+	seen := make([]bool, a.PatternCount())
+	a.AllPatternSet(haystack, seen)
+	got := patternSetToIDs(seen)
+	want := findAllToIDs(a, haystack)
+
+	if len(got) != len(want) {
+		t.Fatalf("NFA AllPatternSet: %d patterns, want %d", len(got), len(want))
+	}
+}
+
+func TestAllPatternSetString(t *testing.T) {
+	a := mustNew(t, []string{"ab", "cd"})
+	seen := make([]bool, a.PatternCount())
+	a.AllPatternSetString("abcd", seen)
+	if !seen[0] || !seen[1] {
+		t.Errorf("AllPatternSetString: seen=%v, want [true, true]", seen)
+	}
+}

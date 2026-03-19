@@ -563,3 +563,105 @@ func BenchmarkPatternBytes_vs_Pattern(b *testing.B) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// PatternSet benchmarks — zero-allocation pattern marking
+// ---------------------------------------------------------------------------
+
+func BenchmarkOverlappingPatternSet_Small_1MB(b *testing.B) {
+	a := buildAC(b, smallPatterns, ac.NewBuilder())
+	hay := hay1MB
+	seen := make([]bool, a.PatternCount())
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		clear(seen)
+		a.OverlappingPatternSet(hay, seen)
+	}
+}
+
+func BenchmarkOverlappingPatternSet_Large_1MB(b *testing.B) {
+	a := buildAC(b, largePatterns, ac.NewBuilder())
+	hay := hay1MB_large
+	seen := make([]bool, a.PatternCount())
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		clear(seen)
+		a.OverlappingPatternSet(hay, seen)
+	}
+}
+
+// Per-campaign simulation: OverlappingPatternSet vs FindOverlappingAll vs FindOverlappingAllAppend
+func BenchmarkPerCampaign_OverlappingPatternSet(b *testing.B) {
+	machines := make([]*ac.AhoCorasick, 100)
+	maxPat := 0
+	for i := range machines {
+		pats := make([]string, 5)
+		for j := range pats {
+			pats[j] = fmt.Sprintf("campaign%d_keyword%d", i, j)
+		}
+		machines[i] = buildAC(b, pats, ac.NewBuilder())
+		if machines[i].PatternCount() > maxPat {
+			maxPat = machines[i].PatternCount()
+		}
+	}
+	hay := []byte(strings.Repeat("some text with campaign50_keyword2 embedded in it ", 10))
+	b.SetBytes(int64(len(hay)) * int64(len(machines)))
+
+	seen := make([]bool, maxPat)
+	for b.Loop() {
+		for _, m := range machines {
+			clear(seen[:m.PatternCount()])
+			m.OverlappingPatternSet(hay, seen)
+		}
+	}
+}
+
+func BenchmarkPerCampaign_FindOverlappingAllAppend(b *testing.B) {
+	machines := make([]*ac.AhoCorasick, 100)
+	for i := range machines {
+		pats := make([]string, 5)
+		for j := range pats {
+			pats[j] = fmt.Sprintf("campaign%d_keyword%d", i, j)
+		}
+		machines[i] = buildAC(b, pats, ac.NewBuilder())
+	}
+	hay := []byte(strings.Repeat("some text with campaign50_keyword2 embedded in it ", 10))
+	b.SetBytes(int64(len(hay)) * int64(len(machines)))
+
+	buf := make([]ac.Match, 0, 64)
+	for b.Loop() {
+		for _, m := range machines {
+			buf = m.FindOverlappingAllAppend(buf[:0], hay)
+		}
+	}
+}
+
+func BenchmarkPerCampaign_FindOverlappingAll(b *testing.B) {
+	machines := make([]*ac.AhoCorasick, 100)
+	for i := range machines {
+		pats := make([]string, 5)
+		for j := range pats {
+			pats[j] = fmt.Sprintf("campaign%d_keyword%d", i, j)
+		}
+		machines[i] = buildAC(b, pats, ac.NewBuilder())
+	}
+	hay := []byte(strings.Repeat("some text with campaign50_keyword2 embedded in it ", 10))
+	b.SetBytes(int64(len(hay)) * int64(len(machines)))
+
+	for b.Loop() {
+		for _, m := range machines {
+			_ = m.FindOverlappingAll(hay)
+		}
+	}
+}
+
+func BenchmarkAllPatternSet_Small_1MB(b *testing.B) {
+	a := buildAC(b, smallPatterns, ac.NewBuilder())
+	hay := hay1MB
+	seen := make([]bool, a.PatternCount())
+	b.SetBytes(int64(len(hay)))
+	for b.Loop() {
+		clear(seen)
+		a.AllPatternSet(hay, seen)
+	}
+}
