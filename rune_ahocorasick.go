@@ -1,6 +1,9 @@
 package ahocorasick
 
-import "sort"
+import (
+	"sort"
+	"unsafe"
+)
 
 // ---------------------------------------------------------------------------
 // Rune-based Aho-Corasick NFA
@@ -29,6 +32,12 @@ func (m RuneMatch) Start() int { return m.start }
 // End returns the ending rune offset of this match (exclusive).
 func (m RuneMatch) End() int { return m.end }
 
+// outputFlag is the high bit of a denseTrans entry. When set, it indicates
+// that the target state has at least one pattern output, allowing the hot
+// path to skip the output check (a random memory load) in the common
+// no-match case.
+const outputFlag stateID = 1 << 31
+
 // RuneAhoCorasick is an Aho-Corasick automaton that operates on rune
 // (Unicode code point) sequences instead of byte sequences.
 //
@@ -38,30 +47,34 @@ func (m RuneMatch) End() int { return m.end }
 //
 // Uses an NFA with a compact rune alphabet and precomputed dense transition
 // tables for the start state and shallow states (depth ≤ denseDepth).
-// Dense tables include failure-link resolution, giving O(1) per-rune
-// transitions in the common case with no branches beyond a single
-// denseBase check.
+// Dense table entries encode both the target state and a hasOutput flag
+// in a single uint32, eliminating a separate memory load for the output
+// check in the common (no-match) case.
 type RuneAhoCorasick struct {
-	states    []nfaState     // reuse existing (fail + outputIdx)
+	states    []nfaState     // reuse existing (fail + outputIdx) — used during build & sparse fallback
 	transBuf  []runeNFATrans // all transitions concatenated (sparse fallback)
 	transBase []int32        // per-state offset into transBuf
 	transLen  []int32        // per-state transition count
 	outputs   []PatternID    // all output pattern IDs, concatenated
 	outLen    []int32        // per-state output count
+	outputOff []int32        // per-state output offset into outputs[] (-1 = no output)
 	patterns  [][]rune       // deep copy of original patterns
 	patLens   []int32        // cached pattern lengths
 	patCount  int
 
-	// Compact rune alphabet: maps runes in [minRune, maxRune] to
-	// 1-based indices (0 = rune not in any pattern).
+	// Compact rune alphabet: maps runes in [minRune, minRune+runeTableLen)
+	// to 1-based indices (0 = rune not in any pattern).
 	runeTable    []uint16
-	minRune      rune
+	minRune      uint32 // stored as uint32 for branchless subtraction
 	runeTableLen uint32 // = maxRune - minRune + 1 (for single unsigned bounds check)
 	alphaSize    int    // number of distinct runes + 1 (0 reserved for "not in alphabet")
 
 	// Unified dense transition table. Start state and shallow states share
-	// the same denseTrans array. denseBase[s] is the pre-multiplied offset
-	// (denseIdx * alphaSize) for O(1) lookup without a multiply in the hot path.
+	// the same denseTrans array. Each entry encodes:
+	//   - bits [30:0]: target stateID
+	//   - bit  [31]:   1 if target state has pattern output (outputFlag)
+	// denseBase[s] is the pre-multiplied offset (idx * alphaSize) for O(1)
+	// lookup: denseTrans[denseBase[s] + alpha].
 	// denseBase[s] = -1 means the state uses the sparse fallback.
 	denseTrans []stateID // concatenated dense tables, each of length alphaSize
 	denseBase  []int32   // per-state pre-multiplied base into denseTrans; -1 = sparse
@@ -278,6 +291,7 @@ func (ra *RuneAhoCorasick) flattenRuneTransitions(tmpTrans [][]runeNFATrans) {
 func (ra *RuneAhoCorasick) flattenRuneOutputs(tmp [][]PatternID) {
 	numStates := len(ra.states)
 	ra.outLen = make([]int32, numStates)
+	ra.outputOff = make([]int32, numStates)
 
 	total := 0
 	for _, outs := range tmp {
@@ -289,6 +303,7 @@ func (ra *RuneAhoCorasick) flattenRuneOutputs(tmp [][]PatternID) {
 		outs := tmp[s]
 		if len(outs) == 0 {
 			ra.states[s].outputIdx = -1
+			ra.outputOff[s] = -1
 			continue
 		}
 		if len(outs) <= 8 {
@@ -304,15 +319,16 @@ func (ra *RuneAhoCorasick) flattenRuneOutputs(tmp [][]PatternID) {
 		} else {
 			sort.Slice(outs, func(i, j int) bool { return outs[i] < outs[j] })
 		}
-		ra.states[s].outputIdx = int32(len(ra.outputs))
+		off := int32(len(ra.outputs))
+		ra.states[s].outputIdx = off
+		ra.outputOff[s] = off
 		ra.outLen[s] = int32(len(outs))
 		ra.outputs = append(ra.outputs, outs...)
 	}
 }
 
 // buildRuneAlphabet collects all unique runes from patterns and builds a
-// compact mapping from rune to 1-based index. Index 0 means "rune not in
-// any pattern" and allows O(1) short-circuit to start state.
+// compact mapping from rune to 1-based index.
 func (ra *RuneAhoCorasick) buildRuneAlphabet(patterns [][]rune) {
 	seen := make(map[rune]bool)
 	for _, pat := range patterns {
@@ -325,41 +341,38 @@ func (ra *RuneAhoCorasick) buildRuneAlphabet(patterns [][]rune) {
 		return
 	}
 
-	// Find min/max rune range.
 	first := true
-	var maxRune rune
+	var minR, maxR rune
 	for r := range seen {
-		if first || r < ra.minRune {
-			ra.minRune = r
+		if first || r < minR {
+			minR = r
 		}
-		if first || r > maxRune {
-			maxRune = r
+		if first || r > maxR {
+			maxR = r
 		}
 		first = false
 	}
 
-	rangeSize := int(maxRune-ra.minRune) + 1
+	ra.minRune = uint32(minR)
+	rangeSize := int(maxR-minR) + 1
 	ra.runeTable = make([]uint16, rangeSize)
 	ra.runeTableLen = uint32(rangeSize)
-	idx := uint16(1) // 0 = not in alphabet
-	// Assign indices in sorted order for determinism.
+	idx := uint16(1)
 	sorted := make([]rune, 0, len(seen))
 	for r := range seen {
 		sorted = append(sorted, r)
 	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 	for _, r := range sorted {
-		ra.runeTable[r-ra.minRune] = idx
+		ra.runeTable[r-minR] = idx
 		idx++
 	}
-	ra.alphaSize = int(idx) // 0..idx-1
+	ra.alphaSize = int(idx)
 }
 
 // buildUnifiedDenseTrans builds a single denseTrans array that includes
-// the start state and all shallow states (depth ≤ maxDepth). Each state
-// gets a table of alphaSize entries with pre-resolved failure links.
-// denseBase[s] stores the pre-multiplied offset (idx * alphaSize) so the
-// hot path avoids a multiply: denseTrans[denseBase[s] + alpha].
+// the start state and all shallow states. Each entry encodes the target
+// stateID in bits [30:0] and a hasOutput flag in bit [31].
 func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16) {
 	numStates := stateID(len(ra.states))
 	ra.denseBase = make([]int32, numStates)
@@ -373,8 +386,7 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 
 	md := uint16(maxDepth)
 
-	// Adaptive: reduce maxDepth if memory would exceed budget.
-	const maxDenseBytes = 8 << 20 // 8MB
+	const maxDenseBytes = 8 << 20
 	const maxTrackedDepth = 256
 	var cumByDepth [maxTrackedDepth + 1]int32
 	for s := stateID(2); s < numStates; s++ {
@@ -390,31 +402,37 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 		md--
 	}
 
-	// +1 for start state which is always included.
-	denseCount := 1 + int(cumByDepth[md])
+	denseCount := 1 + int(cumByDepth[md]) // +1 for start state
 	ra.denseTrans = make([]stateID, denseCount*ra.alphaSize)
+
+	// Helper: encode a target state with its output flag.
+	encode := func(target stateID) stateID {
+		if ra.outputOff[target] >= 0 {
+			return target | outputFlag
+		}
+		return target
+	}
 
 	// --- Slot 0: start state ---
 	ra.denseBase[startStateID] = 0
 	for alpha := 0; alpha < ra.alphaSize; alpha++ {
-		ra.denseTrans[alpha] = startStateID // default: stay at start
+		ra.denseTrans[alpha] = encode(startStateID)
 	}
-	// Fill from start state's actual transitions.
 	base := int(ra.transBase[startStateID])
 	length := int(ra.transLen[startStateID])
 	for i := 0; i < length; i++ {
 		tr := ra.transBuf[base+i]
-		off := uint32(tr.r) - uint32(ra.minRune)
+		off := uint32(tr.r) - ra.minRune
 		if off < ra.runeTableLen {
 			alpha := ra.runeTable[off]
 			if alpha > 0 {
-				ra.denseTrans[int(alpha)] = tr.next
+				ra.denseTrans[int(alpha)] = encode(tr.next)
 			}
 		}
 	}
 
 	// --- Slots 1..N: shallow states ---
-	idx := int32(1) // slot 0 is start
+	idx := int32(1)
 	for s := stateID(2); s < numStates; s++ {
 		if depths[s] > md {
 			continue
@@ -424,8 +442,7 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 
 		for alpha := 0; alpha < ra.alphaSize; alpha++ {
 			if alpha == 0 {
-				// Not-in-alphabet rune: failure chain always reaches start.
-				ra.denseTrans[tableBase] = startStateID
+				ra.denseTrans[tableBase] = encode(startStateID)
 				continue
 			}
 
@@ -433,20 +450,20 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 			cur := s
 			for {
 				if cur == deadStateID {
-					ra.denseTrans[tableBase+alpha] = deadStateID
+					ra.denseTrans[tableBase+alpha] = encode(deadStateID)
 					break
 				}
 				if next, ok := ra.lookupSparse(cur, r); ok {
-					ra.denseTrans[tableBase+alpha] = next
+					ra.denseTrans[tableBase+alpha] = encode(next)
 					break
 				}
 				if cur == startStateID {
-					ra.denseTrans[tableBase+alpha] = startStateID
+					ra.denseTrans[tableBase+alpha] = encode(startStateID)
 					break
 				}
 				fail := ra.states[cur].fail
 				if fail == startStateID {
-					// Use start state's dense table (slot 0).
+					// Use start state's dense table (slot 0), already encoded.
 					ra.denseTrans[tableBase+alpha] = ra.denseTrans[alpha]
 					break
 				}
@@ -461,7 +478,7 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 func (ra *RuneAhoCorasick) alphaToRune(alpha uint16) rune {
 	for i, a := range ra.runeTable {
 		if a == alpha {
-			return ra.minRune + rune(i)
+			return rune(ra.minRune) + rune(i)
 		}
 	}
 	return 0
@@ -502,17 +519,30 @@ func (ra *RuneAhoCorasick) OverlappingPatternSet(haystack []rune, seen []bool) {
 		return
 	}
 
-	states := ra.states
-	outputs := ra.outputs
-	outLens := ra.outLen
 	n := len(haystack)
+	if n == 0 {
+		// Only check empty-pattern output at start.
+		if ra.outputOff[startStateID] >= 0 {
+			ra.drainOutputs(startStateID, seen)
+		}
+		return
+	}
 
-	// Dense table locals.
+	outputs := ra.outputs
+	outLen := ra.outLen
+	outputOff := ra.outputOff
 	denseTrans := ra.denseTrans
 	denseBase := ra.denseBase
 	runeTable := ra.runeTable
 	runeTableLen := ra.runeTableLen
-	minRune := uint32(ra.minRune)
+	minRune := ra.minRune
+
+	// Unsafe base pointers for bounds-check-free access in the hot loop.
+	// All indices are guaranteed valid by construction (build phase).
+	rtPtr := unsafe.Pointer(unsafe.SliceData(runeTable))
+	dtPtr := unsafe.Pointer(unsafe.SliceData(denseTrans))
+	dbPtr := unsafe.Pointer(unsafe.SliceData(denseBase))
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
 
 	// Sparse fallback locals.
 	transBuf := ra.transBuf
@@ -522,55 +552,60 @@ func (ra *RuneAhoCorasick) OverlappingPatternSet(haystack []rune, seen []bool) {
 	state := startStateID
 
 	// Check for empty-pattern match at start.
-	if states[state].outputIdx >= 0 {
-		obase := states[state].outputIdx
-		ol := outLens[state]
-		for i := int32(0); i < ol; i++ {
-			seen[outputs[obase+i]] = true
-		}
+	if outputOff[startStateID] >= 0 {
+		ra.drainOutputs(startStateID, seen)
 	}
-
-	if n == 0 {
-		return
-	}
-
-	_ = haystack[n-1] // BCE hint
 
 	for pos := 0; pos < n; pos++ {
-		r := haystack[pos]
+		// Load rune without bounds check.
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(pos)*4))
 
-		// Map rune to compact alphabet index.
-		// Single unsigned comparison handles both r < minRune and r > maxRune.
-		alpha := uint16(0)
-		if off := uint32(r) - minRune; off < runeTableLen {
-			alpha = runeTable[off]
+		// Map rune to compact alphabet index (single unsigned comparison).
+		off := uint32(r) - minRune
+		alpha := int32(0)
+		if off < runeTableLen {
+			alpha = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
 		}
 
-		// Fast path: dense table lookup (start state + shallow states).
-		// denseBase is pre-multiplied so no multiply needed.
-		if db := denseBase[state]; db >= 0 {
-			state = denseTrans[int(db)+int(alpha)]
+		// Dense table lookup (no bounds check).
+		db := *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4))
+		if db >= 0 {
+			// O(1) transition: denseBase[state] + alpha → denseTrans entry.
+			raw := *(*stateID)(unsafe.Add(dtPtr, uintptr(db+alpha)*4))
+			state = raw &^ outputFlag
+			if raw >= outputFlag {
+				// Target state has output — drain it.
+				obase := outputOff[state]
+				ol := outLen[state]
+				for i := int32(0); i < ol; i++ {
+					seen[outputs[obase+i]] = true
+				}
+			}
 		} else if alpha == 0 {
-			// Rune not in any pattern + deep state → go to start.
 			state = startStateID
 		} else {
-			// Sparse fallback for deep states.
-			state = ra.nextStateSparse(state, r, alpha, denseTrans, transBuf, transBase, transLen)
-		}
-
-		// Drain output chain.
-		if states[state].outputIdx >= 0 {
-			obase := states[state].outputIdx
-			ol := outLens[state]
-			for i := int32(0); i < ol; i++ {
-				seen[outputs[obase+i]] = true
+			state = ra.nextStateSparse(state, rune(r), uint16(alpha), denseTrans, transBuf, transBase, transLen)
+			if outputOff[state] >= 0 {
+				obase := outputOff[state]
+				ol := outLen[state]
+				for i := int32(0); i < ol; i++ {
+					seen[outputs[obase+i]] = true
+				}
 			}
 		}
 	}
 }
 
+// drainOutputs writes all pattern IDs at state s into seen.
+func (ra *RuneAhoCorasick) drainOutputs(s stateID, seen []bool) {
+	obase := ra.outputOff[s]
+	ol := ra.outLen[s]
+	for i := int32(0); i < ol; i++ {
+		seen[ra.outputs[obase+i]] = true
+	}
+}
+
 // nextStateSparse is the fallback path for deep states without dense tables.
-// It walks failure links and uses binary search for transition lookups.
 //
 //go:nosplit
 func (ra *RuneAhoCorasick) nextStateSparse(
@@ -587,7 +622,6 @@ func (ra *RuneAhoCorasick) nextStateSparse(
 		tlen := int(transLen[state])
 		tr := transBuf[tbase : tbase+tlen]
 
-		// Try transition at current state.
 		if tlen <= 8 {
 			for i := 0; i < tlen; i++ {
 				if tr[i].r == r {
@@ -617,9 +651,9 @@ func (ra *RuneAhoCorasick) nextStateSparse(
 		}
 
 		fail := ra.states[state].fail
-		// If failure state has a dense table, resolve in O(1).
 		if db := ra.denseBase[fail]; db >= 0 {
-			return denseTrans[int(db)+int(alpha)]
+			raw := denseTrans[int(db)+int(alpha)]
+			return raw &^ outputFlag
 		}
 		state = fail
 	}
@@ -636,15 +670,14 @@ func (ra *RuneAhoCorasick) FindOverlappingAll(haystack []rune) []RuneMatch {
 }
 
 // FindOverlappingAllAppend appends all overlapping matches to dst and returns it.
-// Pass dst[:0] to reuse an existing buffer.
 func (ra *RuneAhoCorasick) FindOverlappingAllAppend(dst []RuneMatch, haystack []rune) []RuneMatch {
 	if ra == nil || len(ra.states) == 0 {
 		return dst
 	}
 
-	states := ra.states
 	outputs := ra.outputs
-	outLens := ra.outLen
+	outLen := ra.outLen
+	outputOff := ra.outputOff
 	patLens := ra.patLens
 	n := len(haystack)
 	out := dst
@@ -653,17 +686,16 @@ func (ra *RuneAhoCorasick) FindOverlappingAllAppend(dst []RuneMatch, haystack []
 	denseBase := ra.denseBase
 	runeTable := ra.runeTable
 	runeTableLen := ra.runeTableLen
-	minRune := uint32(ra.minRune)
+	minRune := ra.minRune
 	transBuf := ra.transBuf
 	transBase := ra.transBase
 	transLen := ra.transLen
 
 	state := startStateID
 
-	// Check for empty-pattern match at start.
-	if states[state].outputIdx >= 0 {
-		obase := states[state].outputIdx
-		ol := outLens[state]
+	if outputOff[startStateID] >= 0 {
+		obase := outputOff[startStateID]
+		ol := outLen[startStateID]
 		for i := int32(0); i < ol; i++ {
 			pid := outputs[obase+i]
 			out = append(out, RuneMatch{id: pid, start: 0, end: 0})
@@ -679,22 +711,27 @@ func (ra *RuneAhoCorasick) FindOverlappingAllAppend(dst []RuneMatch, haystack []
 	for pos := 0; pos < n; pos++ {
 		r := haystack[pos]
 
-		alpha := uint16(0)
-		if off := uint32(r) - minRune; off < runeTableLen {
-			alpha = runeTable[off]
+		off := uint32(r) - minRune
+		alpha := int32(0)
+		if off < runeTableLen {
+			alpha = int32(runeTable[off])
 		}
 
+		hasOut := false
 		if db := denseBase[state]; db >= 0 {
-			state = denseTrans[int(db)+int(alpha)]
+			raw := denseTrans[int(db)+int(alpha)]
+			state = raw &^ outputFlag
+			hasOut = raw >= outputFlag
 		} else if alpha == 0 {
 			state = startStateID
 		} else {
-			state = ra.nextStateSparse(state, r, alpha, denseTrans, transBuf, transBase, transLen)
+			state = ra.nextStateSparse(state, r, uint16(alpha), denseTrans, transBuf, transBase, transLen)
+			hasOut = outputOff[state] >= 0
 		}
 
-		if states[state].outputIdx >= 0 {
-			obase := states[state].outputIdx
-			ol := outLens[state]
+		if hasOut {
+			obase := outputOff[state]
+			ol := outLen[state]
 			end := pos + 1
 			for i := int32(0); i < ol; i++ {
 				pid := outputs[obase+i]
@@ -717,21 +754,20 @@ func (ra *RuneAhoCorasick) IsMatch(haystack []rune) bool {
 		return false
 	}
 
-	states := ra.states
 	n := len(haystack)
-
+	outputOff := ra.outputOff
 	denseTrans := ra.denseTrans
 	denseBase := ra.denseBase
 	runeTable := ra.runeTable
 	runeTableLen := ra.runeTableLen
-	minRune := uint32(ra.minRune)
+	minRune := ra.minRune
 	transBuf := ra.transBuf
 	transBase := ra.transBase
 	transLen := ra.transLen
 
 	state := startStateID
 
-	if states[state].outputIdx >= 0 {
+	if outputOff[startStateID] >= 0 {
 		return true
 	}
 
@@ -744,21 +780,25 @@ func (ra *RuneAhoCorasick) IsMatch(haystack []rune) bool {
 	for pos := 0; pos < n; pos++ {
 		r := haystack[pos]
 
-		alpha := uint16(0)
-		if off := uint32(r) - minRune; off < runeTableLen {
-			alpha = runeTable[off]
+		off := uint32(r) - minRune
+		alpha := int32(0)
+		if off < runeTableLen {
+			alpha = int32(runeTable[off])
 		}
 
 		if db := denseBase[state]; db >= 0 {
-			state = denseTrans[int(db)+int(alpha)]
+			raw := denseTrans[int(db)+int(alpha)]
+			state = raw &^ outputFlag
+			if raw >= outputFlag {
+				return true
+			}
 		} else if alpha == 0 {
 			state = startStateID
 		} else {
-			state = ra.nextStateSparse(state, r, alpha, denseTrans, transBuf, transBase, transLen)
-		}
-
-		if states[state].outputIdx >= 0 {
-			return true
+			state = ra.nextStateSparse(state, r, uint16(alpha), denseTrans, transBuf, transBase, transLen)
+			if outputOff[state] >= 0 {
+				return true
+			}
 		}
 	}
 
