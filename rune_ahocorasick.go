@@ -114,7 +114,12 @@ func (ra *RuneAhoCorasick) PatternRunes(id PatternID) []rune {
 // Builder
 // ---------------------------------------------------------------------------
 
-const runeDefaultDenseDepth = 5
+// runeDefaultDenseDepth controls how many trie levels get dense transition
+// tables. With compact rune alphabet the tables are small, so we default to
+// "all" (maxUint16) which makes every reachable state dense. The builder
+// still enforces a maxDenseBytes cap and will fall back to a shallower depth
+// if the table would exceed it.
+const runeDefaultDenseDepth = 0xFFFF
 
 func buildRuneNFA(patterns [][]rune) *RuneAhoCorasick {
 	ra := &RuneAhoCorasick{}
@@ -384,18 +389,28 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 		return
 	}
 
-	md := uint16(maxDepth)
+	const maxDenseBytes = 32 << 20
 
-	const maxDenseBytes = 8 << 20
-	const maxTrackedDepth = 256
-	var cumByDepth [maxTrackedDepth + 1]int32
+	// Count how many non-start/non-dead states exist at each depth.
+	maxActualDepth := uint16(0)
 	for s := stateID(2); s < numStates; s++ {
-		d := depths[s]
-		if d <= maxTrackedDepth {
-			cumByDepth[d]++
+		if depths[s] > maxActualDepth {
+			maxActualDepth = depths[s]
 		}
 	}
-	for d := 1; d <= maxTrackedDepth; d++ {
+
+	md := maxActualDepth
+	if uint16(maxDepth) < md {
+		md = uint16(maxDepth)
+	}
+
+	// Cumulative count of states at depth ≤ d.
+	cumByDepth := make([]int32, maxActualDepth+1)
+	for s := stateID(2); s < numStates; s++ {
+		d := depths[s]
+		cumByDepth[d]++
+	}
+	for d := uint16(1); d <= maxActualDepth; d++ {
 		cumByDepth[d] += cumByDepth[d-1]
 	}
 	for md > 0 && int(1+cumByDepth[md])*ra.alphaSize*4 > maxDenseBytes {
@@ -431,7 +446,8 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 		}
 	}
 
-	// --- Slots 1..N: shallow states ---
+	// --- Slots 1..N: dense states ---
+	alphaToRune := ra.buildAlphaToRune()
 	idx := int32(1)
 	for s := stateID(2); s < numStates; s++ {
 		if depths[s] > md {
@@ -446,7 +462,7 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 				continue
 			}
 
-			r := ra.alphaToRune(uint16(alpha))
+			r := alphaToRune[alpha]
 			cur := s
 			for {
 				if cur == deadStateID {
@@ -474,14 +490,15 @@ func (ra *RuneAhoCorasick) buildUnifiedDenseTrans(maxDepth int, depths []uint16)
 	}
 }
 
-// alphaToRune returns the rune for a given 1-based alpha index (build-time only).
-func (ra *RuneAhoCorasick) alphaToRune(alpha uint16) rune {
-	for i, a := range ra.runeTable {
-		if a == alpha {
-			return rune(ra.minRune) + rune(i)
+// buildAlphaToRune returns a reverse lookup: alphaIdx → rune (build-time only).
+func (ra *RuneAhoCorasick) buildAlphaToRune() []rune {
+	a2r := make([]rune, ra.alphaSize)
+	for i, alpha := range ra.runeTable {
+		if alpha > 0 {
+			a2r[alpha] = rune(ra.minRune) + rune(i)
 		}
 	}
-	return 0
+	return a2r
 }
 
 // lookupSparse performs a binary search for rune r in the flattened transition
