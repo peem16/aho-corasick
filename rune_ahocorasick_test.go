@@ -551,3 +551,74 @@ func TestRuneOverlappingPatternSetTrack_NoDuplicates(t *testing.T) {
 		t.Errorf("dirty len=%d want 1 (no duplicates)", len(dirty))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// DFA tests: verify DFA scan produces identical results to NFA scan
+// ---------------------------------------------------------------------------
+
+func TestRuneDFA_MatchesNFA(t *testing.T) {
+	patterns := []string{"he", "she", "his", "hers", "สวัสดี", "ครับ", "สวัส"}
+	ra := buildRune(t, patterns...)
+	ra.BuildDFA()
+
+	haystacks := []string{
+		"ushers",
+		"สวัสดีครับ",
+		"hello she said to his hers",
+		"no match here",
+		"",
+		"สวัสดีครับ ushers",
+	}
+
+	for _, h := range haystacks {
+		hay := []rune(h)
+		seenNFA := make([]bool, ra.PatternCount())
+		seenDFA := make([]bool, ra.PatternCount())
+
+		ra.OverlappingPatternSet(hay, seenNFA)
+		ra.OverlappingPatternSetDFA(hay, seenDFA)
+
+		for i := range seenNFA {
+			if seenNFA[i] != seenDFA[i] {
+				t.Errorf("haystack=%q pattern[%d]=%q: NFA=%v DFA=%v",
+					h, i, patterns[i], seenNFA[i], seenDFA[i])
+			}
+		}
+	}
+}
+
+func TestRuneDFATrack_MatchesNFATrack(t *testing.T) {
+	ra := buildRune(t, "he", "she", "his", "hers")
+	ra.BuildDFA()
+
+	hay := []rune("ushers")
+	seenNFA := make([]bool, ra.PatternCount())
+	seenDFA := make([]bool, ra.PatternCount())
+
+	dirtyNFA := ra.OverlappingPatternSetTrack(hay, seenNFA, nil)
+	dirtyDFA := ra.OverlappingPatternSetDFATrack(hay, seenDFA, nil)
+
+	if len(dirtyNFA) != len(dirtyDFA) {
+		t.Fatalf("dirty len NFA=%d DFA=%d", len(dirtyNFA), len(dirtyDFA))
+	}
+
+	for i := range seenNFA {
+		if seenNFA[i] != seenDFA[i] {
+			t.Errorf("seen[%d]: NFA=%v DFA=%v", i, seenNFA[i], seenDFA[i])
+		}
+	}
+}
+
+func TestRuneDFA_Stats(t *testing.T) {
+	ra := buildRune(t, "he", "she", "his", "hers")
+	daSlots, usedSlots, alphaSize := ra.Stats()
+	t.Logf("DA slots=%d used=%d alphaSize=%d", daSlots, usedSlots, alphaSize)
+
+	ra.BuildDFA()
+	mem := ra.DFAMemBytes()
+	t.Logf("DFA table: %d bytes (%.2f KB)", mem, float64(mem)/1024)
+	expected := int64(daSlots) * int64(alphaSize) * 4
+	if mem != expected {
+		t.Errorf("DFA mem=%d expected=%d", mem, expected)
+	}
+}

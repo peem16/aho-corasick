@@ -79,6 +79,11 @@ type RuneAhoCorasick struct {
 	patterns [][]rune
 	patLens  []int32
 	patCount int
+
+	// DFA precomputed table (optional, built by BuildDFA).
+	// dfaNext[slot * alphaSize + alpha] = next DA slot.
+	// Eliminates failure-link following in the scan hot path.
+	dfaNext []int32
 }
 
 // NewRune builds a rune-based Aho-Corasick automaton from rune patterns.
@@ -96,6 +101,212 @@ func (ra *RuneAhoCorasick) PatternCount() int {
 		return 0
 	}
 	return ra.patCount
+}
+
+// Stats returns internal sizes for diagnostics.
+//   - DASlots: total slots allocated in the double-array
+//   - UsedSlots: slots where daCheck != -1 (or root)
+//   - AlphaSize: compact alphabet size (including 0 = unknown)
+func (ra *RuneAhoCorasick) Stats() (daSlots, usedSlots int, alphaSize int) {
+	if ra == nil {
+		return
+	}
+	daSlots = len(ra.daBase)
+	alphaSize = int(ra.alphaSize)
+	for i := range ra.daCheck {
+		if ra.daCheck[i] != daUnused || int32(i) == ra.rootSlot {
+			usedSlots++
+		}
+	}
+	return
+}
+
+// BuildDFA precomputes a flat DFA transition table that eliminates
+// failure-link following in the scan hot path. After calling BuildDFA,
+// use OverlappingPatternSetDFA / OverlappingPatternSetDFATrack.
+//
+// Memory: len(daBase) × alphaSize × 4 bytes. For 149K-pattern unified
+// machines this can be hundreds of MB; call Stats() first to estimate.
+func (ra *RuneAhoCorasick) BuildDFA() {
+	numSlots := int32(len(ra.daBase))
+	alphaSize := ra.alphaSize
+	root := ra.rootSlot
+
+	tbl := make([]int32, int64(numSlots)*int64(alphaSize))
+
+	for s := int32(0); s < numSlots; s++ {
+		if ra.daCheck[s] == daUnused && s != root {
+			continue
+		}
+		row := int64(s) * int64(alphaSize)
+		for a := int32(1); a < alphaSize; a++ {
+			// Follow fail chain to resolve this transition.
+			state := s
+			for {
+				base := ra.daBase[state] & 0x7FFFFFFF
+				t := base + a
+				if t < numSlots && ra.daCheck[t] == state {
+					tbl[row+int64(a)] = t
+					break
+				}
+				if state == root {
+					tbl[row+int64(a)] = root
+					break
+				}
+				state = ra.daFail[state]
+			}
+		}
+	}
+
+	ra.dfaNext = tbl
+}
+
+// DFAMemBytes returns the memory used by the DFA table, or 0 if not built.
+func (ra *RuneAhoCorasick) DFAMemBytes() int64 {
+	if ra == nil || ra.dfaNext == nil {
+		return 0
+	}
+	return int64(len(ra.dfaNext)) * 4
+}
+
+// OverlappingPatternSetDFA is like OverlappingPatternSet but uses the
+// precomputed DFA table. One memory load per input rune (no fail loops).
+// Must call BuildDFA() first.
+func (ra *RuneAhoCorasick) OverlappingPatternSetDFA(haystack []rune, seen []bool) {
+	if ra == nil || ra.dfaNext == nil || ra.patCount == 0 {
+		return
+	}
+
+	n := len(haystack)
+	root := ra.rootSlot
+	alphaSize := int64(ra.alphaSize)
+
+	// Root outputs.
+	if ra.outputOff[root] >= 0 {
+		obase := ra.outputOff[root]
+		ol := ra.outLen[root]
+		for i := int32(0); i < ol; i++ {
+			seen[ra.outputs[obase+i]] = true
+		}
+	}
+	if n == 0 {
+		return
+	}
+
+	outputs := ra.outputs
+	outLen := ra.outLen
+	outputOff := ra.outputOff
+	runeTable := ra.runeTable
+	runeTableLen := ra.runeTableLen
+	minRune := ra.minRune
+	daBase := ra.daBase
+	dfaNext := ra.dfaNext
+
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
+	rtPtr := unsafe.Pointer(unsafe.SliceData(runeTable))
+	dfaPtr := unsafe.Pointer(unsafe.SliceData(dfaNext))
+	dbPtr := unsafe.Pointer(unsafe.SliceData(daBase))
+
+	state := root
+
+	for pos := 0; pos < n; pos++ {
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(pos)*4))
+
+		off := uint32(r) - minRune
+		alpha := int32(0)
+		if off < runeTableLen {
+			alpha = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+		}
+
+		if alpha == 0 {
+			state = root
+			continue
+		}
+
+		// Single lookup — no fail chain.
+		state = *(*int32)(unsafe.Add(dfaPtr, uintptr(int64(state)*alphaSize+int64(alpha))*4))
+
+		if *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4)) < 0 {
+			obase := outputOff[state]
+			ol := outLen[state]
+			for i := int32(0); i < ol; i++ {
+				seen[outputs[obase+i]] = true
+			}
+		}
+	}
+}
+
+// OverlappingPatternSetDFATrack is OverlappingPatternSetDFA + dirty tracking.
+func (ra *RuneAhoCorasick) OverlappingPatternSetDFATrack(haystack []rune, seen []bool, dirty []PatternID) []PatternID {
+	if ra == nil || ra.dfaNext == nil || ra.patCount == 0 {
+		return dirty
+	}
+
+	n := len(haystack)
+	root := ra.rootSlot
+	alphaSize := int64(ra.alphaSize)
+
+	if ra.outputOff[root] >= 0 {
+		obase := ra.outputOff[root]
+		ol := ra.outLen[root]
+		for i := int32(0); i < ol; i++ {
+			pid := ra.outputs[obase+i]
+			if !seen[pid] {
+				seen[pid] = true
+				dirty = append(dirty, pid)
+			}
+		}
+	}
+	if n == 0 {
+		return dirty
+	}
+
+	outputs := ra.outputs
+	outLen := ra.outLen
+	outputOff := ra.outputOff
+	runeTable := ra.runeTable
+	runeTableLen := ra.runeTableLen
+	minRune := ra.minRune
+	daBase := ra.daBase
+	dfaNext := ra.dfaNext
+
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
+	rtPtr := unsafe.Pointer(unsafe.SliceData(runeTable))
+	dfaPtr := unsafe.Pointer(unsafe.SliceData(dfaNext))
+	dbPtr := unsafe.Pointer(unsafe.SliceData(daBase))
+
+	state := root
+
+	for pos := 0; pos < n; pos++ {
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(pos)*4))
+
+		off := uint32(r) - minRune
+		alpha := int32(0)
+		if off < runeTableLen {
+			alpha = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+		}
+
+		if alpha == 0 {
+			state = root
+			continue
+		}
+
+		state = *(*int32)(unsafe.Add(dfaPtr, uintptr(int64(state)*alphaSize+int64(alpha))*4))
+
+		if *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4)) < 0 {
+			obase := outputOff[state]
+			ol := outLen[state]
+			for i := int32(0); i < ol; i++ {
+				pid := outputs[obase+i]
+				if !seen[pid] {
+					seen[pid] = true
+					dirty = append(dirty, pid)
+				}
+			}
+		}
+	}
+
+	return dirty
 }
 
 // Pattern returns the i-th pattern (a copy — safe to modify).
