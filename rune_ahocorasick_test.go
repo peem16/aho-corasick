@@ -684,3 +684,67 @@ func TestRuneVec_LargeText(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Bitset scan tests
+// ---------------------------------------------------------------------------
+
+func TestRuneBitset_MatchesBool(t *testing.T) {
+	patterns := []string{"he", "she", "his", "hers", "สวัสดี", "ครับ", "สวัส"}
+	ra := buildRune(t, patterns...)
+
+	haystacks := []string{
+		"ushers",
+		"สวัสดีครับ",
+		"hello she said to his hers",
+		"no match here",
+		"",
+		"สวัสดีครับ ushers",
+	}
+
+	for _, h := range haystacks {
+		hay := []rune(h)
+		seenBool := make([]bool, ra.PatternCount())
+		seenBits := make([]uint64, ra.BitsetWords())
+
+		ra.OverlappingPatternSet(hay, seenBool)
+		dirty := ra.OverlappingBitsetTrack(hay, seenBits, nil)
+
+		for i := 0; i < ra.PatternCount(); i++ {
+			boolVal := seenBool[i]
+			bitVal := seenBits[i/64]&(1<<(i%64)) != 0
+			if boolVal != bitVal {
+				t.Errorf("haystack=%q pattern[%d]=%q: bool=%v bitset=%v",
+					h, i, patterns[i], boolVal, bitVal)
+			}
+		}
+
+		// Verify dirty clearing works.
+		for _, wi := range dirty {
+			seenBits[wi] = 0
+		}
+		for i := range seenBits {
+			if seenBits[i] != 0 {
+				t.Errorf("haystack=%q: seenBits[%d] not zero after dirty clear", h, i)
+			}
+		}
+	}
+}
+
+func TestRuneBitset_NoDuplicateDirty(t *testing.T) {
+	// Same pattern appearing multiple times should dirty the word once (or more,
+	// but clearing by zeroing the word handles duplicates fine).
+	ra := buildRune(t, "ab")
+	hay := []rune("ababab")
+	seen := make([]uint64, ra.BitsetWords())
+	dirty := ra.OverlappingBitsetTrack(hay, seen, nil)
+
+	// Pattern "ab" (id=0) is in word 0. dirty may have word 0 once.
+	if len(dirty) != 1 {
+		t.Errorf("dirty len=%d want 1", len(dirty))
+	}
+	// Bit 0 should be set.
+	if seen[0]&1 == 0 {
+		t.Error("bit 0 should be set")
+	}
+}

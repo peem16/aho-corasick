@@ -453,6 +453,114 @@ func (ra *RuneAhoCorasick) OverlappingPatternSetVecTrack(haystack []rune, seen [
 	return dirty
 }
 
+// ---------------------------------------------------------------------------
+// Bitset scan: output to []uint64 instead of []bool (8x smaller → fits L1)
+// ---------------------------------------------------------------------------
+
+// BitsetWords returns the number of uint64 words needed for the bitset:
+// ceil(PatternCount() / 64).
+func (ra *RuneAhoCorasick) BitsetWords() int {
+	if ra == nil {
+		return 0
+	}
+	return (ra.patCount + 63) / 64
+}
+
+// OverlappingBitsetTrack scans haystack and sets bits in the seen[] bitset.
+// seen must have length >= BitsetWords(). dirty tracks which word indices
+// were modified, for efficient clearing:
+//
+//	dirty = machine.OverlappingBitsetTrack(text, seen, dirty[:0])
+//	// ... evaluate conditions using bitwise ops ...
+//	for _, wi := range dirty { seen[wi] = 0 }
+func (ra *RuneAhoCorasick) OverlappingBitsetTrack(haystack []rune, seen []uint64, dirty []int32) []int32 {
+	if ra == nil || ra.patCount == 0 && len(ra.daBase) == 0 {
+		return dirty
+	}
+
+	n := len(haystack)
+	root := ra.rootSlot
+
+	// Helper: set bit and track dirty word.
+	setBit := func(pid PatternID) {
+		wi := int32(pid / 64)
+		bit := uint64(1) << (pid % 64)
+		if seen[wi]&bit == 0 {
+			seen[wi] |= bit
+			// Track dirty word (may add duplicates — caller deduplicates by zeroing).
+			dirty = append(dirty, wi)
+		}
+	}
+
+	// Root outputs.
+	if ra.outputOff[root] >= 0 {
+		obase := ra.outputOff[root]
+		ol := ra.outLen[root]
+		for i := int32(0); i < ol; i++ {
+			setBit(ra.outputs[obase+i])
+		}
+	}
+	if n == 0 {
+		return dirty
+	}
+
+	outputs := ra.outputs
+	outLen := ra.outLen
+	outputOff := ra.outputOff
+	runeTable := ra.runeTable
+	runeTableLen := ra.runeTableLen
+	minRune := ra.minRune
+	daBase := ra.daBase
+	daCheck := ra.daCheck
+	daFail := ra.daFail
+
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
+	rtPtr := unsafe.Pointer(unsafe.SliceData(runeTable))
+	dbPtr := unsafe.Pointer(unsafe.SliceData(daBase))
+	dcPtr := unsafe.Pointer(unsafe.SliceData(daCheck))
+	dfPtr := unsafe.Pointer(unsafe.SliceData(daFail))
+
+	state := root
+
+	for pos := 0; pos < n; pos++ {
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(pos)*4))
+
+		off := uint32(r) - minRune
+		alpha := int32(0)
+		if off < runeTableLen {
+			alpha = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+		}
+
+		if alpha == 0 {
+			state = root
+			continue
+		}
+
+		for {
+			base := *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4)) & 0x7FFFFFFF
+			t := base + alpha
+			if *(*int32)(unsafe.Add(dcPtr, uintptr(t)*4)) == state {
+				state = t
+				break
+			}
+			if state == root {
+				break
+			}
+			state = *(*int32)(unsafe.Add(dfPtr, uintptr(state)*4))
+		}
+
+		if *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4)) < 0 {
+			obase := outputOff[state]
+			ol := outLen[state]
+			for i := int32(0); i < ol; i++ {
+				setBit(outputs[obase+i])
+			}
+		}
+	}
+
+	return dirty
+}
+
 // Pattern returns the i-th pattern (a copy — safe to modify).
 func (ra *RuneAhoCorasick) Pattern(id PatternID) []rune {
 	cp := make([]rune, len(ra.patterns[id]))
