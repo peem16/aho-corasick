@@ -561,6 +561,106 @@ func (ra *RuneAhoCorasick) OverlappingBitsetTrack(haystack []rune, seen []uint64
 	return dirty
 }
 
+// OverlappingBitsetVecTrack combines the Vec two-phase scan (alpha pre-conversion
+// + interleaved DA) with bitset output ([]uint64 + dirty word tracking).
+// Must call BuildVec() first. Falls back to OverlappingBitsetTrack if daVec is nil.
+func (ra *RuneAhoCorasick) OverlappingBitsetVecTrack(haystack []rune, seen []uint64, dirty []int32) []int32 {
+	if ra == nil || ra.patCount == 0 {
+		return dirty
+	}
+	if ra.daVec == nil {
+		return ra.OverlappingBitsetTrack(haystack, seen, dirty)
+	}
+
+	n := len(haystack)
+	root := ra.rootSlot
+
+	// Helper: set bit and track dirty word.
+	setBit := func(pid PatternID) {
+		wi := int32(pid / 64)
+		bit := uint64(1) << (pid % 64)
+		if seen[wi]&bit == 0 {
+			seen[wi] |= bit
+			dirty = append(dirty, wi)
+		}
+	}
+
+	// Root outputs.
+	if ra.outputOff[root] >= 0 {
+		obase := ra.outputOff[root]
+		ol := ra.outLen[root]
+		for i := int32(0); i < ol; i++ {
+			setBit(ra.outputs[obase+i])
+		}
+	}
+	if n == 0 {
+		return dirty
+	}
+
+	// ---- Phase 1: Rune → alpha pre-conversion ----
+	var alphaBuf [1024]int32
+	var alphas []int32
+	if n <= 1024 {
+		alphas = alphaBuf[:n]
+	} else {
+		alphas = make([]int32, n)
+	}
+
+	rtPtr := unsafe.Pointer(unsafe.SliceData(ra.runeTable))
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
+	minRune := ra.minRune
+	rtLen := ra.runeTableLen
+
+	for i := 0; i < n; i++ {
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(i)*4))
+		off := uint32(r) - minRune
+		if off < rtLen {
+			alphas[i] = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+		}
+	}
+
+	// ---- Phase 2: Interleaved DA scan with bitset output ----
+	outputs := ra.outputs
+	outLen := ra.outLen
+	daVec := ra.daVec
+	vecPtr := unsafe.Pointer(unsafe.SliceData(daVec))
+
+	state := root
+
+	for i := 0; i < n; i++ {
+		alpha := alphas[i]
+		if alpha == 0 {
+			state = root
+			continue
+		}
+
+		for {
+			base := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) & 0x7FFFFFFF
+			t := base + alpha
+			if *(*int32)(unsafe.Add(vecPtr, uintptr(t)*16+4)) == state {
+				state = t
+				break
+			}
+			if state == root {
+				break
+			}
+			state = *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+8))
+		}
+
+		if *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) < 0 {
+			ooff := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+12))
+			if ooff >= 0 {
+				ol := outLen[state]
+				for j := int32(0); j < ol; j++ {
+					setBit(outputs[ooff+j])
+				}
+			}
+		}
+	}
+
+	return dirty
+}
+
 // Pattern returns the i-th pattern (a copy — safe to modify).
 func (ra *RuneAhoCorasick) Pattern(id PatternID) []rune {
 	cp := make([]rune, len(ra.patterns[id]))

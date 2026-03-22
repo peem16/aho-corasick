@@ -748,3 +748,105 @@ func TestRuneBitset_NoDuplicateDirty(t *testing.T) {
 		t.Error("bit 0 should be set")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Bitset + Vec tests
+// ---------------------------------------------------------------------------
+
+func TestRuneBitsetVec_MatchesBitset(t *testing.T) {
+	patterns := []string{
+		"สวัสดี", "ครับ", "ค่ะ", "ขอบคุณ", "ประเทศไทย",
+		"กรุงเทพ", "มหานคร", "ภาษาไทย", "คนไทย", "อาหาร",
+		"abc", "test", "hello", "world",
+	}
+	ra := buildRune(t, patterns...)
+	ra.BuildVec()
+
+	texts := []string{
+		"สวัสดีครับ วันนี้อากาศดี ไปร้านอาหารแถวตลาดกันไหม ขอบคุณค่ะ",
+		"hello world this is a test",
+		"abc test abc",
+		"กรุงเทพมหานคร ประเทศไทย ภาษาไทย คนไทย",
+		"no matches here at all",
+		"",
+	}
+
+	words := ra.BitsetWords()
+	for _, text := range texts {
+		hay := []rune(text)
+
+		seenNFA := make([]uint64, words)
+		ra.OverlappingBitsetTrack(hay, seenNFA, nil)
+
+		seenVec := make([]uint64, words)
+		ra.OverlappingBitsetVecTrack(hay, seenVec, nil)
+
+		for w := 0; w < words; w++ {
+			if seenNFA[w] != seenVec[w] {
+				t.Errorf("text=%q word=%d: NFA=0x%x Vec=0x%x", text, w, seenNFA[w], seenVec[w])
+			}
+		}
+	}
+}
+
+func TestRuneBitsetVec_LargeText(t *testing.T) {
+	ra := buildRune(t, "ab", "cd", "ef")
+	ra.BuildVec()
+
+	var buf []rune
+	for i := 0; i < 500; i++ {
+		buf = append(buf, []rune("abcdefgh")...)
+	}
+	hay := buf[:2000]
+
+	words := ra.BitsetWords()
+	seenNFA := make([]uint64, words)
+	seenVec := make([]uint64, words)
+
+	ra.OverlappingBitsetTrack(hay, seenNFA, nil)
+	ra.OverlappingBitsetVecTrack(hay, seenVec, nil)
+
+	for i := 0; i < words; i++ {
+		if seenNFA[i] != seenVec[i] {
+			t.Errorf("word %d: NFA=0x%x Vec=0x%x", i, seenNFA[i], seenVec[i])
+		}
+	}
+}
+
+func BenchmarkRuneBitsetVec_vs_NFA(b *testing.B) {
+	thaiPatterns := []string{
+		"สวัสดี", "ครับ", "ค่ะ", "ขอบคุณ", "ประเทศไทย",
+		"กรุงเทพ", "มหานคร", "ภาษาไทย", "คนไทย", "อาหาร",
+	}
+	ac, _ := NewRune(runesOf(thaiPatterns...))
+	ac.BuildVec()
+
+	hay := []rune("สวัสดีครับ วันนี้อากาศดี ไปร้านอาหารแถวตลาดกันไหม ขอบคุณค่ะ")
+	words := ac.BitsetWords()
+
+	b.Run("BitsetTrack_NFA", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for w := range seen {
+				seen[w] = 0
+			}
+			dirty = ac.OverlappingBitsetTrack(hay, seen, dirty[:0])
+		}
+	})
+
+	b.Run("BitsetVecTrack", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for w := range seen {
+				seen[w] = 0
+			}
+			dirty = ac.OverlappingBitsetVecTrack(hay, seen, dirty[:0])
+		}
+	})
+}
