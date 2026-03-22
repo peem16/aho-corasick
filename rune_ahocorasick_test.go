@@ -492,3 +492,361 @@ func BenchmarkRuneFindOverlappingAll_Thai(b *testing.B) {
 	}
 	_ = fmt.Sprintf("%d", len(buf)) // prevent dead code elimination
 }
+
+// ---------------------------------------------------------------------------
+// OverlappingPatternSetTrack tests
+// ---------------------------------------------------------------------------
+
+func TestRuneOverlappingPatternSetTrack_Basic(t *testing.T) {
+	ra := buildRune(t, "he", "she", "his", "hers")
+	hay := []rune("ushers")
+	seen := make([]bool, ra.PatternCount())
+	var dirty []PatternID
+
+	dirty = ra.OverlappingPatternSetTrack(hay, seen, dirty[:0])
+
+	// Same results as OverlappingPatternSet.
+	want := map[string]bool{"he": true, "she": true, "hers": true}
+	for i, s := range []string{"he", "she", "his", "hers"} {
+		if seen[i] != want[s] {
+			t.Errorf("pattern %q: seen=%v want=%v", s, seen[i], want[s])
+		}
+	}
+
+	// dirty should contain exactly the matched pattern IDs.
+	if len(dirty) != 3 {
+		t.Fatalf("dirty len=%d want 3", len(dirty))
+	}
+
+	// Clear via dirty list and verify all false.
+	for _, id := range dirty {
+		seen[id] = false
+	}
+	for i := range seen {
+		if seen[i] {
+			t.Errorf("seen[%d] still true after dirty clear", i)
+		}
+	}
+}
+
+func TestRuneOverlappingPatternSetTrack_NoMatch(t *testing.T) {
+	ra := buildRune(t, "foo", "bar")
+	hay := []rune("baz")
+	seen := make([]bool, ra.PatternCount())
+	dirty := ra.OverlappingPatternSetTrack(hay, seen, nil)
+
+	if len(dirty) != 0 {
+		t.Errorf("dirty len=%d want 0", len(dirty))
+	}
+}
+
+func TestRuneOverlappingPatternSetTrack_NoDuplicates(t *testing.T) {
+	// "ab" appears twice in "ababab" but dirty should have it once.
+	ra := buildRune(t, "ab")
+	hay := []rune("ababab")
+	seen := make([]bool, ra.PatternCount())
+	dirty := ra.OverlappingPatternSetTrack(hay, seen, nil)
+
+	if len(dirty) != 1 {
+		t.Errorf("dirty len=%d want 1 (no duplicates)", len(dirty))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DFA tests: verify DFA scan produces identical results to NFA scan
+// ---------------------------------------------------------------------------
+
+func TestRuneDFA_MatchesNFA(t *testing.T) {
+	patterns := []string{"he", "she", "his", "hers", "สวัสดี", "ครับ", "สวัส"}
+	ra := buildRune(t, patterns...)
+	ra.BuildDFA()
+
+	haystacks := []string{
+		"ushers",
+		"สวัสดีครับ",
+		"hello she said to his hers",
+		"no match here",
+		"",
+		"สวัสดีครับ ushers",
+	}
+
+	for _, h := range haystacks {
+		hay := []rune(h)
+		seenNFA := make([]bool, ra.PatternCount())
+		seenDFA := make([]bool, ra.PatternCount())
+
+		ra.OverlappingPatternSet(hay, seenNFA)
+		ra.OverlappingPatternSetDFA(hay, seenDFA)
+
+		for i := range seenNFA {
+			if seenNFA[i] != seenDFA[i] {
+				t.Errorf("haystack=%q pattern[%d]=%q: NFA=%v DFA=%v",
+					h, i, patterns[i], seenNFA[i], seenDFA[i])
+			}
+		}
+	}
+}
+
+func TestRuneDFATrack_MatchesNFATrack(t *testing.T) {
+	ra := buildRune(t, "he", "she", "his", "hers")
+	ra.BuildDFA()
+
+	hay := []rune("ushers")
+	seenNFA := make([]bool, ra.PatternCount())
+	seenDFA := make([]bool, ra.PatternCount())
+
+	dirtyNFA := ra.OverlappingPatternSetTrack(hay, seenNFA, nil)
+	dirtyDFA := ra.OverlappingPatternSetDFATrack(hay, seenDFA, nil)
+
+	if len(dirtyNFA) != len(dirtyDFA) {
+		t.Fatalf("dirty len NFA=%d DFA=%d", len(dirtyNFA), len(dirtyDFA))
+	}
+
+	for i := range seenNFA {
+		if seenNFA[i] != seenDFA[i] {
+			t.Errorf("seen[%d]: NFA=%v DFA=%v", i, seenNFA[i], seenDFA[i])
+		}
+	}
+}
+
+func TestRuneDFA_Stats(t *testing.T) {
+	ra := buildRune(t, "he", "she", "his", "hers")
+	daSlots, usedSlots, alphaSize := ra.Stats()
+	t.Logf("DA slots=%d used=%d alphaSize=%d", daSlots, usedSlots, alphaSize)
+
+	ra.BuildDFA()
+	mem := ra.DFAMemBytes()
+	t.Logf("DFA table: %d bytes (%.2f KB)", mem, float64(mem)/1024)
+	expected := int64(daSlots) * int64(alphaSize) * 4
+	if mem != expected {
+		t.Errorf("DFA mem=%d expected=%d", mem, expected)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Vec (interleaved DA) tests
+// ---------------------------------------------------------------------------
+
+func TestRuneVec_MatchesNFA(t *testing.T) {
+	patterns := []string{"he", "she", "his", "hers", "สวัสดี", "ครับ", "สวัส"}
+	ra := buildRune(t, patterns...)
+	ra.BuildVec()
+
+	haystacks := []string{
+		"ushers",
+		"สวัสดีครับ",
+		"hello she said to his hers",
+		"no match here",
+		"",
+		"สวัสดีครับ ushers",
+	}
+
+	for _, h := range haystacks {
+		hay := []rune(h)
+		seenNFA := make([]bool, ra.PatternCount())
+		seenVec := make([]bool, ra.PatternCount())
+
+		dirtyNFA := ra.OverlappingPatternSetTrack(hay, seenNFA, nil)
+		dirtyVec := ra.OverlappingPatternSetVecTrack(hay, seenVec, nil)
+
+		for i := range seenNFA {
+			if seenNFA[i] != seenVec[i] {
+				t.Errorf("haystack=%q pattern[%d]=%q: NFA=%v Vec=%v",
+					h, i, patterns[i], seenNFA[i], seenVec[i])
+			}
+		}
+		if len(dirtyNFA) != len(dirtyVec) {
+			t.Errorf("haystack=%q: dirtyNFA=%d dirtyVec=%d", h, len(dirtyNFA), len(dirtyVec))
+		}
+	}
+}
+
+func TestRuneVec_LargeText(t *testing.T) {
+	// Test with text longer than stack buffer (1024 runes).
+	ra := buildRune(t, "ab", "cd", "ef")
+	ra.BuildVec()
+
+	// Create text with 2000 runes.
+	var buf []rune
+	for i := 0; i < 500; i++ {
+		buf = append(buf, []rune("abcdefgh")...)
+	}
+	hay := buf[:2000]
+
+	seenNFA := make([]bool, ra.PatternCount())
+	seenVec := make([]bool, ra.PatternCount())
+	ra.OverlappingPatternSetTrack(hay, seenNFA, nil)
+	ra.OverlappingPatternSetVecTrack(hay, seenVec, nil)
+
+	for i := range seenNFA {
+		if seenNFA[i] != seenVec[i] {
+			t.Errorf("pattern %d: NFA=%v Vec=%v", i, seenNFA[i], seenVec[i])
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Bitset scan tests
+// ---------------------------------------------------------------------------
+
+func TestRuneBitset_MatchesBool(t *testing.T) {
+	patterns := []string{"he", "she", "his", "hers", "สวัสดี", "ครับ", "สวัส"}
+	ra := buildRune(t, patterns...)
+
+	haystacks := []string{
+		"ushers",
+		"สวัสดีครับ",
+		"hello she said to his hers",
+		"no match here",
+		"",
+		"สวัสดีครับ ushers",
+	}
+
+	for _, h := range haystacks {
+		hay := []rune(h)
+		seenBool := make([]bool, ra.PatternCount())
+		seenBits := make([]uint64, ra.BitsetWords())
+
+		ra.OverlappingPatternSet(hay, seenBool)
+		dirty := ra.OverlappingBitsetTrack(hay, seenBits, nil)
+
+		for i := 0; i < ra.PatternCount(); i++ {
+			boolVal := seenBool[i]
+			bitVal := seenBits[i/64]&(1<<(i%64)) != 0
+			if boolVal != bitVal {
+				t.Errorf("haystack=%q pattern[%d]=%q: bool=%v bitset=%v",
+					h, i, patterns[i], boolVal, bitVal)
+			}
+		}
+
+		// Verify dirty clearing works.
+		for _, wi := range dirty {
+			seenBits[wi] = 0
+		}
+		for i := range seenBits {
+			if seenBits[i] != 0 {
+				t.Errorf("haystack=%q: seenBits[%d] not zero after dirty clear", h, i)
+			}
+		}
+	}
+}
+
+func TestRuneBitset_NoDuplicateDirty(t *testing.T) {
+	// Same pattern appearing multiple times should dirty the word once (or more,
+	// but clearing by zeroing the word handles duplicates fine).
+	ra := buildRune(t, "ab")
+	hay := []rune("ababab")
+	seen := make([]uint64, ra.BitsetWords())
+	dirty := ra.OverlappingBitsetTrack(hay, seen, nil)
+
+	// Pattern "ab" (id=0) is in word 0. dirty may have word 0 once.
+	if len(dirty) != 1 {
+		t.Errorf("dirty len=%d want 1", len(dirty))
+	}
+	// Bit 0 should be set.
+	if seen[0]&1 == 0 {
+		t.Error("bit 0 should be set")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Bitset + Vec tests
+// ---------------------------------------------------------------------------
+
+func TestRuneBitsetVec_MatchesBitset(t *testing.T) {
+	patterns := []string{
+		"สวัสดี", "ครับ", "ค่ะ", "ขอบคุณ", "ประเทศไทย",
+		"กรุงเทพ", "มหานคร", "ภาษาไทย", "คนไทย", "อาหาร",
+		"abc", "test", "hello", "world",
+	}
+	ra := buildRune(t, patterns...)
+	ra.BuildVec()
+
+	texts := []string{
+		"สวัสดีครับ วันนี้อากาศดี ไปร้านอาหารแถวตลาดกันไหม ขอบคุณค่ะ",
+		"hello world this is a test",
+		"abc test abc",
+		"กรุงเทพมหานคร ประเทศไทย ภาษาไทย คนไทย",
+		"no matches here at all",
+		"",
+	}
+
+	words := ra.BitsetWords()
+	for _, text := range texts {
+		hay := []rune(text)
+
+		seenNFA := make([]uint64, words)
+		ra.OverlappingBitsetTrack(hay, seenNFA, nil)
+
+		seenVec := make([]uint64, words)
+		ra.OverlappingBitsetVecTrack(hay, seenVec, nil)
+
+		for w := 0; w < words; w++ {
+			if seenNFA[w] != seenVec[w] {
+				t.Errorf("text=%q word=%d: NFA=0x%x Vec=0x%x", text, w, seenNFA[w], seenVec[w])
+			}
+		}
+	}
+}
+
+func TestRuneBitsetVec_LargeText(t *testing.T) {
+	ra := buildRune(t, "ab", "cd", "ef")
+	ra.BuildVec()
+
+	var buf []rune
+	for i := 0; i < 500; i++ {
+		buf = append(buf, []rune("abcdefgh")...)
+	}
+	hay := buf[:2000]
+
+	words := ra.BitsetWords()
+	seenNFA := make([]uint64, words)
+	seenVec := make([]uint64, words)
+
+	ra.OverlappingBitsetTrack(hay, seenNFA, nil)
+	ra.OverlappingBitsetVecTrack(hay, seenVec, nil)
+
+	for i := 0; i < words; i++ {
+		if seenNFA[i] != seenVec[i] {
+			t.Errorf("word %d: NFA=0x%x Vec=0x%x", i, seenNFA[i], seenVec[i])
+		}
+	}
+}
+
+func BenchmarkRuneBitsetVec_vs_NFA(b *testing.B) {
+	thaiPatterns := []string{
+		"สวัสดี", "ครับ", "ค่ะ", "ขอบคุณ", "ประเทศไทย",
+		"กรุงเทพ", "มหานคร", "ภาษาไทย", "คนไทย", "อาหาร",
+	}
+	ac, _ := NewRune(runesOf(thaiPatterns...))
+	ac.BuildVec()
+
+	hay := []rune("สวัสดีครับ วันนี้อากาศดี ไปร้านอาหารแถวตลาดกันไหม ขอบคุณค่ะ")
+	words := ac.BitsetWords()
+
+	b.Run("BitsetTrack_NFA", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for w := range seen {
+				seen[w] = 0
+			}
+			dirty = ac.OverlappingBitsetTrack(hay, seen, dirty[:0])
+		}
+	})
+
+	b.Run("BitsetVecTrack", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for w := range seen {
+				seen[w] = 0
+			}
+			dirty = ac.OverlappingBitsetVecTrack(hay, seen, dirty[:0])
+		}
+	})
+}
