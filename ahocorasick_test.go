@@ -301,11 +301,11 @@ func TestNFAvsDFA(t *testing.T) {
 	haystack := "ushers"
 
 	nfa := mustBuild(t,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA),
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA),
 		patterns,
 	)
 	dfa := mustBuild(t,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindDFA),
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA),
 		patterns,
 	)
 
@@ -583,7 +583,7 @@ func TestFindOverlappingAllAppendString(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFindAllAppend_NFA(t *testing.T) {
-	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	b := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
 	haystack := []byte("ushers")
 
@@ -601,7 +601,7 @@ func TestFindAllAppend_NFA(t *testing.T) {
 }
 
 func TestFindOverlappingAllAppend_NFA(t *testing.T) {
-	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	b := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
 	haystack := []byte("ushers")
 
@@ -663,7 +663,7 @@ func TestCountAllString(t *testing.T) {
 }
 
 func TestCountAll_NFA(t *testing.T) {
-	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	b := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
 	haystack := []byte("ushers")
 	want := len(a.FindAll(haystack))
@@ -718,7 +718,7 @@ func TestCountOverlappingString(t *testing.T) {
 }
 
 func TestCountOverlapping_NFA(t *testing.T) {
-	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	b := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
 	haystack := []byte("ushers")
 	want := len(a.FindOverlappingAll(haystack))
@@ -842,7 +842,7 @@ func TestOverlappingPatternSet_Reuse(t *testing.T) {
 }
 
 func TestOverlappingPatternSet_NFA(t *testing.T) {
-	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	b := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
 	haystack := []byte("ushers")
 
@@ -931,7 +931,7 @@ func TestAllPatternSet_NoMatch(t *testing.T) {
 }
 
 func TestAllPatternSet_NFA(t *testing.T) {
-	b := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	b := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	a := mustBuild(t, b, []string{"he", "she", "his", "hers"})
 	haystack := []byte("ushers")
 

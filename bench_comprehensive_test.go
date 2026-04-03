@@ -70,7 +70,7 @@ var (
 
 func BenchmarkFindOverlapping_NFA_Small_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
 	hay := hay1MB
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -87,7 +87,7 @@ func BenchmarkFindOverlapping_NFA_Small_1MB(b *testing.B) {
 
 func BenchmarkFindOverlapping_DFA_Small_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindDFA).MatchKind(ac.MatchKindStandard))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA).MatchKind(ac.MatchKindStandard))
 	hay := hay1MB
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -104,7 +104,7 @@ func BenchmarkFindOverlapping_DFA_Small_1MB(b *testing.B) {
 
 func BenchmarkFindOverlapping_NFA_Medium_1MB(b *testing.B) {
 	a := buildAC(b, mediumPatterns,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
 	hay := hay1MB_medium
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -121,7 +121,7 @@ func BenchmarkFindOverlapping_NFA_Medium_1MB(b *testing.B) {
 
 func BenchmarkFindOverlapping_DFA_Medium_1MB(b *testing.B) {
 	a := buildAC(b, mediumPatterns,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindDFA).MatchKind(ac.MatchKindStandard))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA).MatchKind(ac.MatchKindStandard))
 	hay := hay1MB_medium
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -141,7 +141,7 @@ func BenchmarkFindOverlapping_DFA_Medium_1MB(b *testing.B) {
 // ---------------------------------------------------------------------------
 
 func BenchmarkFindIter_NFA_Small_1MB(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	hay := hay1MB
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -157,7 +157,7 @@ func BenchmarkFindIter_NFA_Small_1MB(b *testing.B) {
 }
 
 func BenchmarkFindIter_DFA_Small_1MB(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	hay := hay1MB
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -173,7 +173,7 @@ func BenchmarkFindIter_DFA_Small_1MB(b *testing.B) {
 }
 
 func BenchmarkFindIter_NFA_Medium_1MB(b *testing.B) {
-	a := buildAC(b, mediumPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, mediumPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	hay := hay1MB_medium
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -189,7 +189,7 @@ func BenchmarkFindIter_NFA_Medium_1MB(b *testing.B) {
 }
 
 func BenchmarkFindIter_DFA_Medium_1MB(b *testing.B) {
-	a := buildAC(b, mediumPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, mediumPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	hay := hay1MB_medium
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -247,7 +247,7 @@ func BenchmarkReplaceAllWith_Medium_1MB(b *testing.B) {
 
 func BenchmarkCaseInsensitive_NFA_Small_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).AsciiCaseInsensitive(true))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA).AsciiCaseInsensitive(true))
 	hay := hay1MB_ci
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -257,7 +257,7 @@ func BenchmarkCaseInsensitive_NFA_Small_1MB(b *testing.B) {
 
 func BenchmarkCaseInsensitive_DFA_Small_1MB(b *testing.B) {
 	a := buildAC(b, smallPatterns,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindDFA).AsciiCaseInsensitive(true))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA).AsciiCaseInsensitive(true))
 	hay := hay1MB_ci
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -267,7 +267,7 @@ func BenchmarkCaseInsensitive_DFA_Small_1MB(b *testing.B) {
 
 func BenchmarkCaseInsensitive_NFA_Medium_1MB(b *testing.B) {
 	a := buildAC(b, mediumPatterns,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).AsciiCaseInsensitive(true))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA).AsciiCaseInsensitive(true))
 	hay := hay1MB_medium_ci
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -277,7 +277,7 @@ func BenchmarkCaseInsensitive_NFA_Medium_1MB(b *testing.B) {
 
 func BenchmarkCaseInsensitive_DFA_Medium_1MB(b *testing.B) {
 	a := buildAC(b, mediumPatterns,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindDFA).AsciiCaseInsensitive(true))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA).AsciiCaseInsensitive(true))
 	hay := hay1MB_medium_ci
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -291,7 +291,7 @@ func BenchmarkCaseInsensitive_DFA_Medium_1MB(b *testing.B) {
 // ---------------------------------------------------------------------------
 
 func BenchmarkScaling_DFA_Small_100Matches(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	hay := hayScale100
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -300,7 +300,7 @@ func BenchmarkScaling_DFA_Small_100Matches(b *testing.B) {
 }
 
 func BenchmarkScaling_DFA_Small_1000Matches(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	hay := hayScale1000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -309,7 +309,7 @@ func BenchmarkScaling_DFA_Small_1000Matches(b *testing.B) {
 }
 
 func BenchmarkScaling_DFA_Small_10000Matches(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	hay := hayScale10000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -318,7 +318,7 @@ func BenchmarkScaling_DFA_Small_10000Matches(b *testing.B) {
 }
 
 func BenchmarkScaling_NFA_Small_100Matches(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	hay := hayScale100
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -327,7 +327,7 @@ func BenchmarkScaling_NFA_Small_100Matches(b *testing.B) {
 }
 
 func BenchmarkScaling_NFA_Small_1000Matches(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	hay := hayScale1000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -336,7 +336,7 @@ func BenchmarkScaling_NFA_Small_1000Matches(b *testing.B) {
 }
 
 func BenchmarkScaling_NFA_Small_10000Matches(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	hay := hayScale10000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -350,7 +350,7 @@ func BenchmarkScaling_NFA_Small_10000Matches(b *testing.B) {
 
 func BenchmarkFindOverlapping_NFA_1000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, patterns1000,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
 	hay := hay1MB_1000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -367,7 +367,7 @@ func BenchmarkFindOverlapping_NFA_1000Patterns_1MB(b *testing.B) {
 
 func BenchmarkFindOverlapping_NFA_5000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, patterns5000,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
 	hay := hay1MB_5000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -384,7 +384,7 @@ func BenchmarkFindOverlapping_NFA_5000Patterns_1MB(b *testing.B) {
 
 func BenchmarkFindOverlapping_NFA_10000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, patterns10000,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindStandard))
 	hay := hay1MB_10000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -401,7 +401,7 @@ func BenchmarkFindOverlapping_NFA_10000Patterns_1MB(b *testing.B) {
 
 func BenchmarkFindAll_NFA_1000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, patterns1000,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	hay := hay1MB_1000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -411,7 +411,7 @@ func BenchmarkFindAll_NFA_1000Patterns_1MB(b *testing.B) {
 
 func BenchmarkFindAll_NFA_5000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, patterns5000,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	hay := hay1MB_5000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {
@@ -421,7 +421,7 @@ func BenchmarkFindAll_NFA_5000Patterns_1MB(b *testing.B) {
 
 func BenchmarkFindAll_NFA_10000Patterns_1MB(b *testing.B) {
 	a := buildAC(b, patterns10000,
-		ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+		ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	hay := hay1MB_10000
 	b.SetBytes(int64(len(hay)))
 	for b.Loop() {

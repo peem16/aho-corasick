@@ -47,7 +47,7 @@ type nfaState struct {
 // Note: nfaState deliberately omits the trie depth field.  Depth is only
 // needed during construction (buildDenseTrans) and is passed as a temporary
 // []uint16 to avoid inflating the hot struct and wasting cache capacity.
-type NFA struct {
+type nfa struct {
 	states     []nfaState
 	transBuf   []nfaTrans  // all transitions concatenated
 	transBase  []int32     // transBase[stateID] = start index in transBuf
@@ -68,18 +68,18 @@ type NFA struct {
 // automaton interface implementation
 // ---------------------------------------------------------------------------
 
-func (n *NFA) startState() stateID { return startStateID }
+func (n *nfa) startState() stateID { return startStateID }
 
-func (n *NFA) isDead(s stateID) bool { return s == deadStateID }
+func (n *nfa) isDead(s stateID) bool { return s == deadStateID }
 
-func (n *NFA) matchKindOf() MatchKind { return n.matchKind }
+func (n *nfa) matchKindOf() MatchKind { return n.matchKind }
 
-func (n *NFA) isMatch(s stateID) bool {
+func (n *nfa) isMatch(s stateID) bool {
 	return n.states[s].outputIdx >= 0
 }
 
 // matches returns the pattern IDs output at state s (possibly nil).
-func (n *NFA) matches(s stateID) []PatternID {
+func (n *nfa) matches(s stateID) []PatternID {
 	st := &n.states[s]
 	if st.outputIdx < 0 {
 		return nil
@@ -93,7 +93,7 @@ func (n *NFA) matches(s stateID) []PatternID {
 // failure links until a transition is found (or we reach start/dead).
 //
 //go:nosplit
-func (n *NFA) nextState(s stateID, b byte) stateID {
+func (n *nfa) nextState(s stateID, b byte) stateID {
 	if n.useAlpha {
 		b = n.alphabet[b]
 	}
@@ -130,13 +130,13 @@ func (n *NFA) nextState(s stateID, b byte) stateID {
 // buffer of state s.
 //
 //go:nosplit
-func (n *NFA) lookup(s stateID, b byte) (stateID, bool) {
+func (n *nfa) lookup(s stateID, b byte) (stateID, bool) {
 	base := int(n.transBase[s])
 	length := int(n.transLen[s])
 	tr := n.transBuf[base : base+length]
 	lo, hi := 0, length
 	for lo < hi {
-		mid := int(uint(lo+hi) >> 1)
+		mid := int(uint(lo+hi) >> 1) // unsigned shift avoids overflow on lo+hi
 		if tr[mid].b < b {
 			lo = mid + 1
 		} else {
@@ -155,8 +155,8 @@ func (n *NFA) lookup(s stateID, b byte) (stateID, bool) {
 
 // buildNFA constructs an Aho-Corasick NFA from patterns.
 // patterns must not be empty (validated by the caller).
-func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool, denseDepth int) *NFA {
-	n := &NFA{
+func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool, denseDepth int) *nfa {
+	n := &nfa{
 		matchKind: mk,
 		alphabet:  alphabet,
 		useAlpha:  useAlpha,
@@ -300,7 +300,7 @@ func buildNFA(patterns [][]byte, mk MatchKind, alphabet [256]byte, useAlpha bool
 func lookupTmp(tr []nfaTrans, b byte) (stateID, bool) {
 	lo, hi := 0, len(tr)
 	for lo < hi {
-		mid := int(uint(lo+hi) >> 1)
+		mid := int(uint(lo+hi) >> 1) // unsigned shift avoids overflow on lo+hi
 		if tr[mid].b < b {
 			lo = mid + 1
 		} else {
@@ -317,7 +317,7 @@ func lookupTmp(tr []nfaTrans, b byte) (stateID, bool) {
 func addTransTmp(tr []nfaTrans, b byte, next stateID) []nfaTrans {
 	lo, hi := 0, len(tr)
 	for lo < hi {
-		mid := int(uint(lo+hi) >> 1)
+		mid := int(uint(lo+hi) >> 1) // unsigned shift avoids overflow on lo+hi
 		if tr[mid].b < b {
 			lo = mid + 1
 		} else {
@@ -351,12 +351,12 @@ func addDeadTransitions(states []nfaState, tmpTrans [][]nfaTrans, tmpOutputs [][
 		// Build a full 256-entry sorted transition list by merging existing
 		// (sorted) transitions with dead-state fillers, in O(256) time.
 		newTrans := make([]nfaTrans, 0, 256)
-		ei := 0
+		existingIdx := 0
 		for b := 0; b < 256; b++ {
 			bb := byte(b)
-			if ei < len(existing) && existing[ei].b == bb {
-				newTrans = append(newTrans, existing[ei])
-				ei++
+			if existingIdx < len(existing) && existing[existingIdx].b == bb {
+				newTrans = append(newTrans, existing[existingIdx])
+				existingIdx++
 			} else {
 				newTrans = append(newTrans, nfaTrans{b: bb, next: deadStateID})
 			}
@@ -367,7 +367,7 @@ func addDeadTransitions(states []nfaState, tmpTrans [][]nfaTrans, tmpOutputs [][
 
 // flattenTransitions packs all per-state transition slices into a single
 // contiguous buffer for better cache locality during search.
-func (n *NFA) flattenTransitions(tmpTrans [][]nfaTrans) {
+func (n *nfa) flattenTransitions(tmpTrans [][]nfaTrans) {
 	numStates := len(n.states)
 	n.transBase = make([]int32, numStates)
 	n.transLen = make([]int32, numStates)
@@ -389,7 +389,7 @@ func (n *NFA) flattenTransitions(tmpTrans [][]nfaTrans) {
 // buildStartTrans precomputes the dense 256-entry transition table for the
 // start state. This eliminates binary search and failure-link traversal for
 // the most frequently visited state.
-func (n *NFA) buildStartTrans() {
+func (n *nfa) buildStartTrans() {
 	// For each byte, compute what nextState(startStateID, b) would return.
 	// Start state: if there's a direct transition, use it; otherwise stay at start.
 	for b := 0; b < 256; b++ {
@@ -409,7 +409,7 @@ func (n *NFA) buildStartTrans() {
 // at depth ≤ maxDepth (excluding start state, which has its own table).
 // This turns binary-search + failure-link traversal into a single O(1) lookup
 // for the most frequently visited states.
-func (n *NFA) buildDenseTrans(maxDepth uint16, depths []uint16) {
+func (n *nfa) buildDenseTrans(maxDepth uint16, depths []uint16) {
 	numStates := stateID(len(n.states))
 	n.denseIdx = make([]int32, numStates)
 	for i := range n.denseIdx {
@@ -477,7 +477,7 @@ func (n *NFA) buildDenseTrans(maxDepth uint16, depths []uint16) {
 }
 
 // flattenOutputs converts the per-state slice-of-slices into flat arrays.
-func (n *NFA) flattenOutputs(tmp [][]PatternID) {
+func (n *nfa) flattenOutputs(tmp [][]PatternID) {
 	numStates := len(n.states)
 	n.outLen = make([]int32, numStates)
 
@@ -524,12 +524,12 @@ func (n *NFA) flattenOutputs(tmp [][]PatternID) {
 // in ahocorasick.go can call it directly for readability.
 //
 //go:nosplit
-func (n *NFA) step(s stateID, b byte) stateID {
+func (n *nfa) step(s stateID, b byte) stateID {
 	return n.nextState(s, b)
 }
 
 // firstMatchAt returns the first PatternID output at state s along with
 // its start offset (end is the caller's responsibility).
-func (n *NFA) firstMatchAt(s stateID) PatternID {
+func (n *nfa) firstMatchAt(s stateID) PatternID {
 	return n.outputs[n.states[s].outputIdx]
 }

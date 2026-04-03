@@ -611,13 +611,13 @@ func TestRuneDFATrack_MatchesNFATrack(t *testing.T) {
 
 func TestRuneDFA_Stats(t *testing.T) {
 	ra := buildRune(t, "he", "she", "his", "hers")
-	daSlots, usedSlots, alphaSize := ra.Stats()
-	t.Logf("DA slots=%d used=%d alphaSize=%d", daSlots, usedSlots, alphaSize)
+	stats := ra.Stats()
+	t.Logf("DA slots=%d used=%d alphaSize=%d", stats.DASlots, stats.UsedSlots, stats.AlphaSize)
 
 	ra.BuildDFA()
 	mem := ra.DFAMemBytes()
 	t.Logf("DFA table: %d bytes (%.2f KB)", mem, float64(mem)/1024)
-	expected := int64(daSlots) * int64(alphaSize) * 4
+	expected := int64(stats.DASlots) * int64(stats.AlphaSize) * 4
 	if mem != expected {
 		t.Errorf("DFA mem=%d expected=%d", mem, expected)
 	}
@@ -705,7 +705,7 @@ func TestRuneBitset_MatchesBool(t *testing.T) {
 	for _, h := range haystacks {
 		hay := []rune(h)
 		seenBool := make([]bool, ra.PatternCount())
-		seenBits := make([]uint64, ra.BitsetWords())
+		seenBits := make([]uint64, ra.PatternBitsetWords())
 
 		ra.OverlappingPatternSet(hay, seenBool)
 		dirty := ra.OverlappingBitsetTrack(hay, seenBits, nil)
@@ -736,7 +736,7 @@ func TestRuneBitset_NoDuplicateDirty(t *testing.T) {
 	// but clearing by zeroing the word handles duplicates fine).
 	ra := buildRune(t, "ab")
 	hay := []rune("ababab")
-	seen := make([]uint64, ra.BitsetWords())
+	seen := make([]uint64, ra.PatternBitsetWords())
 	dirty := ra.OverlappingBitsetTrack(hay, seen, nil)
 
 	// Pattern "ab" (id=0) is in word 0. dirty may have word 0 once.
@@ -771,7 +771,7 @@ func TestRuneBitsetVec_MatchesBitset(t *testing.T) {
 		"",
 	}
 
-	words := ra.BitsetWords()
+	words := ra.PatternBitsetWords()
 	for _, text := range texts {
 		hay := []rune(text)
 
@@ -799,7 +799,7 @@ func TestRuneBitsetVec_LargeText(t *testing.T) {
 	}
 	hay := buf[:2000]
 
-	words := ra.BitsetWords()
+	words := ra.PatternBitsetWords()
 	seenNFA := make([]uint64, words)
 	seenVec := make([]uint64, words)
 
@@ -822,7 +822,7 @@ func BenchmarkRuneBitsetVec_vs_NFA(b *testing.B) {
 	ac.BuildVec()
 
 	hay := []rune("สวัสดีครับ วันนี้อากาศดี ไปร้านอาหารแถวตลาดกันไหม ขอบคุณค่ะ")
-	words := ac.BitsetWords()
+	words := ac.PatternBitsetWords()
 
 	b.Run("BitsetTrack_NFA", func(b *testing.B) {
 		seen := make([]uint64, words)
