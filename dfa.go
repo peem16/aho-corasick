@@ -13,11 +13,11 @@ package ahocorasick
 // Construction cost: O(|NFA_states| × 256) time and memory.
 // Search cost:       O(n) — no failure link traversal needed.
 
-// DFA wraps a pre-computed, dense transition table built from an NFA.
+// dfa wraps a pre-computed, dense transition table built from an n.
 //
 // Outputs are stored in a flat buffer to reduce per-state allocations and
 // improve cache locality when iterating over matches.
-type DFA struct {
+type dfa struct {
 	trans     []stateID   // flat: numStates * 256 entries
 	outBuf    []PatternID // flat output buffer: all pattern IDs concatenated
 	outBase   []int32     // per-state base index into outBuf; -1 = no match
@@ -32,15 +32,15 @@ type DFA struct {
 // automaton interface
 // ---------------------------------------------------------------------------
 
-func (d *DFA) startState() stateID { return startStateID }
+func (d *dfa) startState() stateID { return startStateID }
 
-func (d *DFA) isDead(s stateID) bool { return s == deadStateID }
+func (d *dfa) isDead(s stateID) bool { return s == deadStateID }
 
-func (d *DFA) matchKindOf() MatchKind { return d.matchKind }
+func (d *dfa) matchKindOf() MatchKind { return d.matchKind }
 
-func (d *DFA) isMatch(s stateID) bool { return d.outBase[s] >= 0 }
+func (d *dfa) isMatch(s stateID) bool { return d.outBase[s] >= 0 }
 
-func (d *DFA) matches(s stateID) []PatternID {
+func (d *dfa) matches(s stateID) []PatternID {
 	base := d.outBase[s]
 	if base < 0 {
 		return nil
@@ -52,7 +52,7 @@ func (d *DFA) matches(s stateID) []PatternID {
 // The transition table already encodes failure links, so no loop is needed.
 //
 //go:nosplit
-func (d *DFA) nextState(s stateID, b byte) stateID {
+func (d *dfa) nextState(s stateID, b byte) stateID {
 	if d.useAlpha {
 		b = d.alphabet[b]
 	}
@@ -71,16 +71,16 @@ func (d *DFA) nextState(s stateID, b byte) stateID {
 // This is NOT subset-construction: the DFA has the same number of states
 // as the NFA.  For each (state, byte) pair, we walk the failure chain
 // until we find a defined goto or reach the start state.
-func buildDFA(nfa *NFA) *DFA {
-	numStates := len(nfa.states)
-	d := &DFA{
+func buildDFA(n *nfa) *dfa {
+	numStates := len(n.states)
+	d := &dfa{
 		trans:     make([]stateID, numStates*256),
 		outBase:   make([]int32, numStates),
 		outLen:    make([]int32, numStates),
-		matchKind: nfa.matchKind,
+		matchKind: n.matchKind,
 		numStates: numStates,
-		alphabet:  nfa.alphabet,
-		useAlpha:  nfa.useAlpha,
+		alphabet:  n.alphabet,
+		useAlpha:  n.useAlpha,
 	}
 
 	// Initialise all states as non-matching.
@@ -92,11 +92,11 @@ func buildDFA(nfa *NFA) *DFA {
 	// improve cache locality — avoids one heap object per matching state.
 	numOut := 0
 	for s := 0; s < numStates; s++ {
-		numOut += len(nfa.matches(stateID(s)))
+		numOut += len(n.matches(stateID(s)))
 	}
 	d.outBuf = make([]PatternID, 0, numOut)
 	for s := 0; s < numStates; s++ {
-		outs := nfa.matches(stateID(s))
+		outs := n.matches(stateID(s))
 		if len(outs) == 0 {
 			continue
 		}
@@ -112,16 +112,16 @@ func buildDFA(nfa *NFA) *DFA {
 	// Since f is always at lesser depth, BFS ensures f is already computed.
 	// This is O(S × 256) instead of O(S × 256 × depth).
 
-	transBuf := nfa.transBuf
-	transBase := nfa.transBase
-	transLen := nfa.transLen
+	transBuf := n.transBuf
+	transBase := n.transBase
+	transLen := n.transLen
 
 	// Dead state (0): all transitions stay at 0 (zeroed by make).
 
 	// Start state: copy from NFA's precomputed startTrans.
 	startBase := int(startStateID) << 8
 	for b := 0; b < 256; b++ {
-		d.trans[startBase|b] = nfa.startTrans[b]
+		d.trans[startBase|b] = n.startTrans[b]
 	}
 
 	// BFS from start's children.
@@ -145,7 +145,7 @@ func buildDFA(nfa *NFA) *DFA {
 	for qi := 0; qi < len(queue); qi++ {
 		s := queue[qi]
 		sBase := int(s) << 8
-		fail := nfa.states[s].fail
+		fail := n.states[s].fail
 		failBase := int(fail) << 8
 
 		// Copy failure state's DFA row (O(256) memcpy).

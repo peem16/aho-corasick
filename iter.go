@@ -28,8 +28,8 @@ var findIterPool = sync.Pool{
 // position (left to right).
 type FindIter struct {
 	ac       *AhoCorasick
-	nfa      *NFA    // cached NFA pointer; nil when using DFA
-	dfa      *DFA    // cached DFA pointer; nil when using NFA
+	nfa      *nfa    // cached NFA pointer; nil when using DFA
+	dfa      *dfa    // cached DFA pointer; nil when using NFA
 	haystack []byte
 	pos      int
 	state    stateID
@@ -40,8 +40,8 @@ type FindIter struct {
 func newFindIter(ac *AhoCorasick, haystack []byte) *FindIter {
 	it := findIterPool.Get().(*FindIter)
 	it.ac = ac
-	it.nfa, _ = ac.imp.(*NFA)
-	it.dfa, _ = ac.imp.(*DFA)
+	it.nfa, _ = ac.imp.(*nfa)
+	it.dfa, _ = ac.imp.(*dfa)
 	it.haystack = haystack
 	it.pos = 0
 	it.state = startStateID
@@ -323,8 +323,8 @@ var findOverlappingIterPool = sync.Pool{
 // For Leftmost* semantics it behaves identically to FindIter.
 type FindOverlappingIter struct {
 	ac       *AhoCorasick
-	nfa      *NFA // cached NFA pointer; nil when using DFA
-	dfa      *DFA // cached DFA pointer; nil when using NFA
+	nfa      *nfa // cached NFA pointer; nil when using DFA
+	dfa      *dfa // cached DFA pointer; nil when using NFA
 	haystack []byte
 	pos      int     // current byte position in haystack
 	state    stateID // current automaton state

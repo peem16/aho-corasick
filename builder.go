@@ -39,9 +39,9 @@ func (b *AhoCorasickBuilder) MatchKind(k MatchKind) *AhoCorasickBuilder {
 	return b
 }
 
-// Kind forces a specific automaton representation.
+// AutomatonKind forces a specific automaton representation.
 // Use AhoCorasickKindAuto to let the library decide.
-func (b *AhoCorasickBuilder) Kind(k AhoCorasickKind) *AhoCorasickBuilder {
+func (b *AhoCorasickBuilder) AutomatonKind(k AhoCorasickKind) *AhoCorasickBuilder {
 	b.kind = k
 	return b
 }
@@ -65,7 +65,7 @@ func (b *AhoCorasickBuilder) Prefilter(v bool) *AhoCorasickBuilder {
 // DenseDepth sets the depth threshold for dense vs sparse state
 // representation in the NFA.  States at depth ≤ DenseDepth will use a
 // 256-entry dense table; deeper states use sorted sparse lists.
-// The default of 2 is a good balance for most workloads.
+// The default of 10 is a good balance for most workloads.
 func (b *AhoCorasickBuilder) DenseDepth(d int) *AhoCorasickBuilder {
 	b.denseDepth = d
 	return b
@@ -92,17 +92,17 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 	}
 
 	// Build NFA (always — DFA is derived from NFA).
-	nfa := buildNFA(patterns, b.matchKind, alphabet, useAlpha, b.denseDepth)
+	builtNFA := buildNFA(patterns, b.matchKind, alphabet, useAlpha, b.denseDepth)
 
 	// Decide automaton kind using actual NFA state count (exact).
-	kind := b.resolveKind(nfa)
+	kind := b.resolveKind(builtNFA)
 
 	var imp automaton
 	switch kind {
 	case AhoCorasickKindDFA:
-		imp = buildDFA(nfa)
+		imp = buildDFA(builtNFA)
 	default:
-		imp = nfa
+		imp = builtNFA
 	}
 
 	// Build prefilter if enabled.
@@ -122,8 +122,8 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 	}
 
 	// Cache typed pointers to avoid repeated type assertions in hot paths.
-	acNFA, _ := imp.(*NFA)
-	acDFA, _ := imp.(*DFA)
+	acNFA, _ := imp.(*nfa)
+	acDFA, _ := imp.(*dfa)
 
 	return &AhoCorasick{
 		imp:       imp,
@@ -144,7 +144,7 @@ func (b *AhoCorasickBuilder) Build(patterns [][]byte) (*AhoCorasick, error) {
 // the exact DFA memory: numStates × 256 × 4 bytes. This is much more
 // accurate than estimating from total pattern bytes, which ignores
 // prefix sharing in the trie.
-func (b *AhoCorasickBuilder) resolveKind(nfa *NFA) AhoCorasickKind {
+func (b *AhoCorasickBuilder) resolveKind(nfa *nfa) AhoCorasickKind {
 	if b.kind != AhoCorasickKindAuto {
 		return b.kind
 	}

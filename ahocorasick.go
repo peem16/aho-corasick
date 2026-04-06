@@ -4,9 +4,9 @@ package ahocorasick
 // Build one with New or AhoCorasickBuilder.Build, then reuse it
 // freely — it is safe for concurrent use after construction.
 type AhoCorasick struct {
-	imp       automaton // *NFA or *DFA
-	nfa       *NFA      // non-nil when imp is *NFA; avoids repeated type assertions
-	dfa       *DFA      // non-nil when imp is *DFA; avoids repeated type assertions
+	imp       automaton // *nfa or *dfa
+	nfa       *nfa      // non-nil when imp is *nfa; avoids repeated type assertions
+	dfa       *dfa      // non-nil when imp is *dfa; avoids repeated type assertions
 	pf        *prefilter
 	matchKind MatchKind
 	kind      AhoCorasickKind
@@ -40,8 +40,8 @@ func (ac *AhoCorasick) Pattern(i PatternID) []byte {
 	return cp
 }
 
-// PatternBytes returns the i-th pattern without copying.
-// The caller must not modify the returned slice.
+// PatternBytes returns the i-th pattern as a direct reference — no copy is made.
+// The caller must not modify the returned slice; use Pattern() for a safe copy.
 func (ac *AhoCorasick) PatternBytes(i PatternID) []byte {
 	return ac.patterns[i]
 }
@@ -49,8 +49,8 @@ func (ac *AhoCorasick) PatternBytes(i PatternID) []byte {
 // MatchKind returns the match semantics used by this automaton.
 func (ac *AhoCorasick) MatchKind() MatchKind { return ac.matchKind }
 
-// Kind returns the automaton representation kind.
-func (ac *AhoCorasick) Kind() AhoCorasickKind { return ac.kind }
+// AutomatonKind returns the automaton representation kind (NFA or DFA).
+func (ac *AhoCorasick) AutomatonKind() AhoCorasickKind { return ac.kind }
 
 // ---------------------------------------------------------------------------
 // IsMatch
@@ -172,7 +172,7 @@ func (ac *AhoCorasick) findStandardGeneric(haystack []byte, pos int, state state
 // findStandardDFA is an inlined DFA path for findStandard that eliminates
 // interface dispatch and allows the compiler to register-allocate the hot
 // transition table pointer.
-func (ac *AhoCorasick) findStandardDFA(dfa *DFA, haystack []byte, pos int, state stateID) (Match, bool) {
+func (ac *AhoCorasick) findStandardDFA(dfa *dfa, haystack []byte, pos int, state stateID) (Match, bool) {
 	pf := ac.pf
 	patLens := ac.patLens
 	n := len(haystack)
@@ -230,7 +230,7 @@ func (ac *AhoCorasick) findStandardDFA(dfa *DFA, haystack []byte, pos int, state
 // findStandardNFA is an inlined NFA path for findStandard that eliminates
 // interface dispatch, binary search on shallow states (via dense tables),
 // and enables the compiler to register-allocate NFA slice headers.
-func (ac *AhoCorasick) findStandardNFA(nfa *NFA, haystack []byte, pos int, state stateID) (Match, bool) {
+func (ac *AhoCorasick) findStandardNFA(nfa *nfa, haystack []byte, pos int, state stateID) (Match, bool) {
 	pf := ac.pf
 	patLens := ac.patLens
 	n := len(haystack)
@@ -354,7 +354,7 @@ func (ac *AhoCorasick) findStandardNFA(nfa *NFA, haystack []byte, pos int, state
 // until we can guarantee no better match starts at the same or earlier position.
 
 // findLeftmostFirstDFA is an inlined DFA path that eliminates interface dispatch.
-func (ac *AhoCorasick) findLeftmostFirstDFA(dfa *DFA, haystack []byte, pos int) (Match, bool) {
+func (ac *AhoCorasick) findLeftmostFirstDFA(dfa *dfa, haystack []byte, pos int) (Match, bool) {
 	patLens := ac.patLens
 	n := len(haystack)
 	if n == 0 {
@@ -412,10 +412,10 @@ func (ac *AhoCorasick) findLeftmostFirstDFA(dfa *DFA, haystack []byte, pos int) 
 }
 
 func (ac *AhoCorasick) findLeftmostFirst(haystack []byte, pos int) (Match, bool) {
-	if dfa, ok := ac.imp.(*DFA); ok {
+	if dfa, ok := ac.imp.(*dfa); ok {
 		return ac.findLeftmostFirstDFA(dfa, haystack, pos)
 	}
-	if nfa, ok := ac.imp.(*NFA); ok {
+	if nfa, ok := ac.imp.(*nfa); ok {
 		return ac.findLeftmostFirstNFA(nfa, haystack, pos)
 	}
 	return ac.findLeftmostFirstGeneric(haystack, pos)
@@ -474,7 +474,7 @@ func (ac *AhoCorasick) findLeftmostFirstGeneric(haystack []byte, pos int) (Match
 
 // findLeftmostFirstNFA is an inlined NFA path that eliminates interface
 // dispatch and enables register allocation of NFA fields.
-func (ac *AhoCorasick) findLeftmostFirstNFA(nfa *NFA, haystack []byte, pos int) (Match, bool) {
+func (ac *AhoCorasick) findLeftmostFirstNFA(nfa *nfa, haystack []byte, pos int) (Match, bool) {
 	patLens := ac.patLens
 	n := len(haystack)
 
@@ -598,7 +598,7 @@ func (ac *AhoCorasick) findLeftmostFirstNFA(nfa *NFA, haystack []byte, pos int) 
 // ---------------------------------------------------------------------------
 
 // findLeftmostLongestDFA is an inlined DFA path for leftmost-longest search.
-func (ac *AhoCorasick) findLeftmostLongestDFA(dfa *DFA, haystack []byte, pos int) (Match, bool) {
+func (ac *AhoCorasick) findLeftmostLongestDFA(dfa *dfa, haystack []byte, pos int) (Match, bool) {
 	patLens := ac.patLens
 	n := len(haystack)
 	if n == 0 {
@@ -669,10 +669,10 @@ func (ac *AhoCorasick) findLeftmostLongestDFA(dfa *DFA, haystack []byte, pos int
 }
 
 func (ac *AhoCorasick) findLeftmostLongest(haystack []byte, pos int) (Match, bool) {
-	if dfa, ok := ac.imp.(*DFA); ok {
+	if dfa, ok := ac.imp.(*dfa); ok {
 		return ac.findLeftmostLongestDFA(dfa, haystack, pos)
 	}
-	if nfa, ok := ac.imp.(*NFA); ok {
+	if nfa, ok := ac.imp.(*nfa); ok {
 		return ac.findLeftmostLongestNFA(nfa, haystack, pos)
 	}
 	return ac.findLeftmostLongestGeneric(haystack, pos)
@@ -740,7 +740,7 @@ func (ac *AhoCorasick) findLeftmostLongestGeneric(haystack []byte, pos int) (Mat
 
 // findLeftmostLongestNFA is an inlined NFA path that eliminates interface
 // dispatch and enables register allocation of NFA fields.
-func (ac *AhoCorasick) findLeftmostLongestNFA(nfa *NFA, haystack []byte, pos int) (Match, bool) {
+func (ac *AhoCorasick) findLeftmostLongestNFA(nfa *nfa, haystack []byte, pos int) (Match, bool) {
 	patLens := ac.patLens
 	n := len(haystack)
 
@@ -923,7 +923,7 @@ func (ac *AhoCorasick) FindAllAppendString(dst []Match, haystack string) []Match
 
 // findAllStandardDFAAppend collects all Standard non-overlapping matches using
 // the DFA in a single tight loop, appending to dst.
-func (ac *AhoCorasick) findAllStandardDFAAppend(dfa *DFA, dst []Match, haystack []byte) []Match {
+func (ac *AhoCorasick) findAllStandardDFAAppend(dfa *dfa, dst []Match, haystack []byte) []Match {
 	pf := ac.pf
 	patLens := ac.patLens
 	n := len(haystack)
@@ -986,7 +986,7 @@ func (ac *AhoCorasick) findAllStandardDFAAppend(dfa *DFA, dst []Match, haystack 
 
 // findAllStandardNFAAppend collects all Standard non-overlapping matches using
 // the NFA in a single tight loop, appending to dst.
-func (ac *AhoCorasick) findAllStandardNFAAppend(nfa *NFA, dst []Match, haystack []byte) []Match {
+func (ac *AhoCorasick) findAllStandardNFAAppend(nfa *nfa, dst []Match, haystack []byte) []Match {
 	pf := ac.pf
 	patLens := ac.patLens
 	n := len(haystack)
@@ -1165,7 +1165,7 @@ func (ac *AhoCorasick) FindOverlappingAllAppendString(dst []Match, haystack stri
 
 // findOverlappingAllDFAAppend collects all overlapping matches using the DFA
 // in a single tight loop, appending to dst.
-func (ac *AhoCorasick) findOverlappingAllDFAAppend(dfa *DFA, dst []Match, haystack []byte) []Match {
+func (ac *AhoCorasick) findOverlappingAllDFAAppend(dfa *dfa, dst []Match, haystack []byte) []Match {
 	pf := ac.pf
 	patLens := ac.patLens
 	n := len(haystack)
@@ -1227,7 +1227,7 @@ func (ac *AhoCorasick) findOverlappingAllDFAAppend(dfa *DFA, dst []Match, haysta
 
 // findOverlappingAllNFAAppend collects all overlapping matches using the NFA
 // in a single tight loop, appending to dst.
-func (ac *AhoCorasick) findOverlappingAllNFAAppend(nfa *NFA, dst []Match, haystack []byte) []Match {
+func (ac *AhoCorasick) findOverlappingAllNFAAppend(nfa *nfa, dst []Match, haystack []byte) []Match {
 	pf := ac.pf
 	patLens := ac.patLens
 	n := len(haystack)
@@ -1386,7 +1386,7 @@ func (ac *AhoCorasick) CountAllString(haystack string) int {
 }
 
 // countAllStandardDFA counts non-overlapping matches using the DFA.
-func (ac *AhoCorasick) countAllStandardDFA(dfa *DFA, haystack []byte) int {
+func (ac *AhoCorasick) countAllStandardDFA(dfa *dfa, haystack []byte) int {
 	pf := ac.pf
 	n := len(haystack)
 	count := 0
@@ -1439,7 +1439,7 @@ func (ac *AhoCorasick) countAllStandardDFA(dfa *DFA, haystack []byte) int {
 }
 
 // countAllStandardNFA counts non-overlapping matches using the NFA.
-func (ac *AhoCorasick) countAllStandardNFA(nfa *NFA, haystack []byte) int {
+func (ac *AhoCorasick) countAllStandardNFA(nfa *nfa, haystack []byte) int {
 	pf := ac.pf
 	n := len(haystack)
 
@@ -1585,7 +1585,7 @@ func (ac *AhoCorasick) CountOverlappingString(haystack string) int {
 }
 
 // countOverlappingDFA counts all overlapping matches using the DFA.
-func (ac *AhoCorasick) countOverlappingDFA(dfa *DFA, haystack []byte) int {
+func (ac *AhoCorasick) countOverlappingDFA(dfa *dfa, haystack []byte) int {
 	pf := ac.pf
 	n := len(haystack)
 
@@ -1631,7 +1631,7 @@ func (ac *AhoCorasick) countOverlappingDFA(dfa *DFA, haystack []byte) int {
 }
 
 // countOverlappingNFA counts all overlapping matches using the NFA.
-func (ac *AhoCorasick) countOverlappingNFA(nfa *NFA, haystack []byte) int {
+func (ac *AhoCorasick) countOverlappingNFA(nfa *nfa, haystack []byte) int {
 	pf := ac.pf
 	n := len(haystack)
 
@@ -1777,7 +1777,7 @@ func (ac *AhoCorasick) OverlappingPatternSetString(haystack string, seen []bool)
 }
 
 // overlappingPatternSetDFA marks matched patterns using the DFA.
-func (ac *AhoCorasick) overlappingPatternSetDFA(dfa *DFA, haystack []byte, seen []bool) {
+func (ac *AhoCorasick) overlappingPatternSetDFA(dfa *dfa, haystack []byte, seen []bool) {
 	pf := ac.pf
 	n := len(haystack)
 
@@ -1830,7 +1830,7 @@ func (ac *AhoCorasick) overlappingPatternSetDFA(dfa *DFA, haystack []byte, seen 
 }
 
 // overlappingPatternSetNFA marks matched patterns using the NFA.
-func (ac *AhoCorasick) overlappingPatternSetNFA(nfa *NFA, haystack []byte, seen []bool) {
+func (ac *AhoCorasick) overlappingPatternSetNFA(nfa *nfa, haystack []byte, seen []bool) {
 	pf := ac.pf
 	n := len(haystack)
 
@@ -1978,7 +1978,7 @@ func (ac *AhoCorasick) AllPatternSetString(haystack string, seen []bool) {
 }
 
 // allPatternSetDFA marks non-overlapping matched patterns using the DFA.
-func (ac *AhoCorasick) allPatternSetDFA(dfa *DFA, haystack []byte, seen []bool) {
+func (ac *AhoCorasick) allPatternSetDFA(dfa *dfa, haystack []byte, seen []bool) {
 	pf := ac.pf
 	n := len(haystack)
 
@@ -2029,7 +2029,7 @@ func (ac *AhoCorasick) allPatternSetDFA(dfa *DFA, haystack []byte, seen []bool) 
 }
 
 // allPatternSetNFA marks non-overlapping matched patterns using the NFA.
-func (ac *AhoCorasick) allPatternSetNFA(nfa *NFA, haystack []byte, seen []bool) {
+func (ac *AhoCorasick) allPatternSetNFA(nfa *nfa, haystack []byte, seen []bool) {
 	pf := ac.pf
 	n := len(haystack)
 

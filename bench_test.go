@@ -86,7 +86,7 @@ func BenchmarkBuild_NFA_Small(b *testing.B) {
 	for i, p := range smallPatterns {
 		bs[i] = []byte(p)
 	}
-	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	bldr := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
@@ -97,7 +97,7 @@ func BenchmarkBuild_DFA_Small(b *testing.B) {
 	for i, p := range smallPatterns {
 		bs[i] = []byte(p)
 	}
-	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindDFA)
+	bldr := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA)
 	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
@@ -108,7 +108,7 @@ func BenchmarkBuild_NFA_Large(b *testing.B) {
 	for i, p := range largePatterns {
 		bs[i] = []byte(p)
 	}
-	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	bldr := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
@@ -119,7 +119,7 @@ func BenchmarkBuild_NFA_1000(b *testing.B) {
 	for i, p := range patterns1000 {
 		bs[i] = []byte(p)
 	}
-	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	bldr := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
@@ -130,7 +130,7 @@ func BenchmarkBuild_NFA_5000(b *testing.B) {
 	for i, p := range patterns5000 {
 		bs[i] = []byte(p)
 	}
-	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA)
+	bldr := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA)
 	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
@@ -141,7 +141,7 @@ func BenchmarkBuild_NFA_LeftmostFirst_1000(b *testing.B) {
 	for i, p := range patterns1000 {
 		bs[i] = []byte(p)
 	}
-	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindLeftmostFirst)
+	bldr := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA).MatchKind(ac.MatchKindLeftmostFirst)
 	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
@@ -152,7 +152,7 @@ func BenchmarkBuild_DFA_1000(b *testing.B) {
 	for i, p := range patterns1000 {
 		bs[i] = []byte(p)
 	}
-	bldr := ac.NewBuilder().Kind(ac.AhoCorasickKindDFA)
+	bldr := ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA)
 	for b.Loop() {
 		_, _ = bldr.Build(bs)
 	}
@@ -171,7 +171,7 @@ var hay1MB_xl5000 = haystackOf(1024*1024, xlPatterns5000)
 var hay1MB_xl10000 = haystackOf(1024*1024, xlPatterns10000)
 
 func BenchmarkFind_NFA_Small_1KB(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	b.SetBytes(int64(len(hay1KB)))
 	for b.Loop() {
 		_, _ = a.Find(hay1KB)
@@ -179,7 +179,7 @@ func BenchmarkFind_NFA_Small_1KB(b *testing.B) {
 }
 
 func BenchmarkFind_DFA_Small_1KB(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1KB)))
 	for b.Loop() {
 		_, _ = a.Find(hay1KB)
@@ -187,7 +187,7 @@ func BenchmarkFind_DFA_Small_1KB(b *testing.B) {
 }
 
 func BenchmarkFindAll_NFA_Small_1MB(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	b.SetBytes(int64(len(hay1MB)))
 	for b.Loop() {
 		_ = a.FindAll(hay1MB)
@@ -195,7 +195,7 @@ func BenchmarkFindAll_NFA_Small_1MB(b *testing.B) {
 }
 
 func BenchmarkFindAll_DFA_Small_1MB(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB)))
 	for b.Loop() {
 		_ = a.FindAll(hay1MB)
@@ -207,7 +207,7 @@ func BenchmarkFindAll_DFA_Small_1MB(b *testing.B) {
 // ---------------------------------------------------------------------------
 
 func BenchmarkFindAll_NFA_Medium_1MB(b *testing.B) {
-	a := buildAC(b, mediumPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, mediumPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	b.SetBytes(int64(len(hay1MB_medium)))
 	for b.Loop() {
 		_ = a.FindAll(hay1MB_medium)
@@ -215,7 +215,7 @@ func BenchmarkFindAll_NFA_Medium_1MB(b *testing.B) {
 }
 
 func BenchmarkFindAll_DFA_Medium_1MB(b *testing.B) {
-	a := buildAC(b, mediumPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, mediumPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB_medium)))
 	for b.Loop() {
 		_ = a.FindAll(hay1MB_medium)
@@ -227,7 +227,7 @@ func BenchmarkFindAll_DFA_Medium_1MB(b *testing.B) {
 // ---------------------------------------------------------------------------
 
 func BenchmarkFindAll_NFA_Large_1MB(b *testing.B) {
-	a := buildAC(b, largePatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindContiguousNFA))
+	a := buildAC(b, largePatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindContiguousNFA))
 	b.SetBytes(int64(len(hay1MB_large)))
 	for b.Loop() {
 		_ = a.FindAll(hay1MB_large)
@@ -235,7 +235,7 @@ func BenchmarkFindAll_NFA_Large_1MB(b *testing.B) {
 }
 
 func BenchmarkFindAll_DFA_Large_1MB(b *testing.B) {
-	a := buildAC(b, largePatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, largePatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB_large)))
 	for b.Loop() {
 		_ = a.FindAll(hay1MB_large)
@@ -302,7 +302,7 @@ func BenchmarkFindIter_Pool_Reuse(b *testing.B) {
 // ---------------------------------------------------------------------------
 
 func BenchmarkIsMatch_DFA_1MB(b *testing.B) {
-	a := buildAC(b, smallPatterns, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, smallPatterns, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB)))
 	for b.Loop() {
 		_ = a.IsMatch(hay1MB)
@@ -350,7 +350,7 @@ func BenchmarkFindAll_Auto_1000Patterns_1MB(b *testing.B) {
 }
 
 func BenchmarkFindAll_DFA_1000Patterns_1MB(b *testing.B) {
-	a := buildAC(b, xlPatterns1000, ac.NewBuilder().Kind(ac.AhoCorasickKindDFA))
+	a := buildAC(b, xlPatterns1000, ac.NewBuilder().AutomatonKind(ac.AhoCorasickKindDFA))
 	b.SetBytes(int64(len(hay1MB_xl1000)))
 	for b.Loop() {
 		_ = a.FindAll(hay1MB_xl1000)

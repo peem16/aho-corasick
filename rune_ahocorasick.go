@@ -31,6 +31,9 @@ func (m RuneMatch) Start() int { return m.start }
 // End returns the ending rune offset of this match (exclusive).
 func (m RuneMatch) End() int { return m.end }
 
+// Runes returns the matching slice of haystack without copying.
+func (m RuneMatch) Runes(haystack []rune) []rune { return haystack[m.start:m.end] }
+
 // daOutputFlag is the high bit of a daBase entry. When set, it indicates
 // that the DA slot has at least one pattern output, allowing the hot
 // path to skip the output check (a random memory load) in the common
@@ -109,22 +112,29 @@ func (ra *RuneAhoCorasick) PatternCount() int {
 	return ra.patCount
 }
 
+// RuneStats holds internal size diagnostics for a RuneAhoCorasick automaton.
+type RuneStats struct {
+	DASlots   int // total slots allocated in the double-array
+	UsedSlots int // slots where daCheck != -1 (or root slot)
+	AlphaSize int // compact alphabet size (including 0 = rune not in any pattern)
+}
+
 // Stats returns internal sizes for diagnostics.
-//   - DASlots: total slots allocated in the double-array
-//   - UsedSlots: slots where daCheck != -1 (or root)
-//   - AlphaSize: compact alphabet size (including 0 = unknown)
-func (ra *RuneAhoCorasick) Stats() (daSlots, usedSlots int, alphaSize int) {
+func (ra *RuneAhoCorasick) Stats() RuneStats {
 	if ra == nil {
-		return
+		return RuneStats{}
 	}
-	daSlots = len(ra.daBase)
-	alphaSize = int(ra.alphaSize)
+	var usedSlots int
 	for i := range ra.daCheck {
 		if ra.daCheck[i] != daUnused || int32(i) == ra.rootSlot {
 			usedSlots++
 		}
 	}
-	return
+	return RuneStats{
+		DASlots:   len(ra.daBase),
+		UsedSlots: usedSlots,
+		AlphaSize: int(ra.alphaSize),
+	}
 }
 
 // BuildDFA precomputes a flat DFA transition table that eliminates
@@ -457,9 +467,9 @@ func (ra *RuneAhoCorasick) OverlappingPatternSetVecTrack(haystack []rune, seen [
 // Bitset scan: output to []uint64 instead of []bool (8x smaller → fits L1)
 // ---------------------------------------------------------------------------
 
-// BitsetWords returns the number of uint64 words needed for the bitset:
+// PatternBitsetWords returns the number of uint64 words needed for the bitset:
 // ceil(PatternCount() / 64).
-func (ra *RuneAhoCorasick) BitsetWords() int {
+func (ra *RuneAhoCorasick) PatternBitsetWords() int {
 	if ra == nil {
 		return 0
 	}
@@ -467,7 +477,7 @@ func (ra *RuneAhoCorasick) BitsetWords() int {
 }
 
 // OverlappingBitsetTrack scans haystack and sets bits in the seen[] bitset.
-// seen must have length >= BitsetWords(). dirty tracks which word indices
+// seen must have length >= PatternBitsetWords(). dirty tracks which word indices
 // were modified, for efficient clearing:
 //
 //	dirty = machine.OverlappingBitsetTrack(text, seen, dirty[:0])
@@ -668,8 +678,8 @@ func (ra *RuneAhoCorasick) Pattern(id PatternID) []rune {
 	return cp
 }
 
-// PatternRunes returns the i-th pattern without copying.
-// The caller must not modify the returned slice.
+// PatternRunes returns the i-th pattern as a direct reference — no copy is made.
+// The caller must not modify the returned slice; use Pattern() for a safe copy.
 func (ra *RuneAhoCorasick) PatternRunes(id PatternID) []rune {
 	return ra.patterns[id]
 }

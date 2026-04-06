@@ -199,7 +199,7 @@ s := string(m.Bytes(haystack))
 
 ```go
 ac, _ := ahocorasick.NewBuilder().
-    Kind(ahocorasick.AhoCorasickKindDFA). // force DFA แม้ pattern จะเยอะ
+    AutomatonKind(ahocorasick.AhoCorasickKindDFA). // force DFA แม้ pattern จะเยอะ
     BuildString(manyPatterns)
 ```
 
@@ -288,7 +288,7 @@ Non-ASCII bytes are matched exactly.
 
 ## Choosing a backend
 
-The `Kind` option controls memory/speed trade-off.
+The `AutomatonKind` option controls memory/speed trade-off.
 
 | Kind | Memory | Speed | When to use |
 |---|---|---|---|
@@ -299,7 +299,7 @@ The `Kind` option controls memory/speed trade-off.
 
 ```go
 ac, _ := ahocorasick.NewBuilder().
-    Kind(ahocorasick.AhoCorasickKindDFA).
+    AutomatonKind(ahocorasick.AhoCorasickKindDFA).
     BuildString(patterns)
 ```
 
@@ -312,10 +312,10 @@ ac, _ := ahocorasick.NewBuilder().
 ```go
 ahocorasick.NewBuilder().
     MatchKind(ahocorasick.MatchKindLeftmostLongest). // default: Standard
-    Kind(ahocorasick.AhoCorasickKindDFA).            // default: Auto
+    AutomatonKind(ahocorasick.AhoCorasickKindDFA).   // default: Auto
     AsciiCaseInsensitive(true).                      // default: false
     Prefilter(false).                                // default: true
-    DenseDepth(3).                                   // default: 2
+    DenseDepth(3).                                   // default: 10
     Build(patterns)
 ```
 
@@ -368,6 +368,79 @@ BenchmarkReplaceAll_1MB                                ~453 MB/s
 ## UPDATE TEST
 
 make bench-report
+
+---
+
+## Rune API Naming Conventions
+
+The `RuneAhoCorasick` type has several method variants. The suffixes follow consistent rules:
+
+### `Vec` — Cache-Line-Optimized Layout
+
+Methods with `Vec` use an **interleaved double-array (DA) layout** built by `BuildVec()`.
+
+Normally the DA stores `base`, `check`, `fail`, and `outputOff` in four separate arrays. Accessing a slot may require up to 4 cache-line loads.
+
+`BuildVec()` packs all four fields for each slot together (16 bytes per slot):
+```
+[base0, check0, fail0, outOff0, base1, check1, fail1, outOff1, ...]
+```
+When the CPU loads `check[t]` to verify a transition, `base[t]` is already in the same cache line. On the next loop iteration (state = t), `base[t]` is already in L1 — **one fewer L3 miss per rune**.
+
+Call `BuildVec()` once, then use `*Vec*` methods:
+
+```go
+rac.BuildVec()
+dirty = rac.OverlappingPatternSetVecTrack(text, seen, dirty[:0])
+```
+
+### `Track` — Dirty-List for Efficient Reset
+
+Methods with `Track` accept a `dirty` slice and **return the list of indices modified** during the scan.
+
+Without tracking, resetting `seen` costs O(PatternCount) regardless of how many patterns matched. With tracking you only clear what changed:
+
+```go
+// Reset only matched entries — O(matches), not O(PatternCount)
+dirty = rac.OverlappingPatternSetTrack(text, seen, dirty[:0])
+// ... use seen ...
+for _, id := range dirty {
+    seen[id] = false
+}
+```
+
+Use `*Track` methods when `PatternCount` is large but matches per scan are sparse.
+
+### `DFA` — Precomputed Flat Transition Table
+
+Methods with `DFA` use a table built by `BuildDFA()` that resolves all failure links upfront — **one memory load per rune, no loop**.
+
+Cost: `numSlots × alphaSize × 4` bytes. Check `Stats()` before calling:
+
+```go
+stats := rac.Stats()
+fmt.Printf("DFA would use %d MB\n", int64(stats.DASlots)*int64(stats.AlphaSize)*4>>20)
+rac.BuildDFA()
+rac.OverlappingPatternSetDFA(text, seen)
+```
+
+### Combining suffixes
+
+Suffixes compose: `OverlappingPatternSetVecTrack` uses the Vec layout **and** returns a dirty list.
+
+| Method | Backend | Returns dirty list |
+|--------|---------|-------------------|
+| `OverlappingPatternSet` | DA (NFA) | no |
+| `OverlappingPatternSetTrack` | DA (NFA) | yes |
+| `OverlappingPatternSetDFA` | DFA | no |
+| `OverlappingPatternSetDFATrack` | DFA | yes |
+| `OverlappingPatternSetVecTrack` | Vec DA | yes |
+| `OverlappingBitsetTrack` | DA (NFA), bitset | yes |
+| `OverlappingBitsetVecTrack` | Vec DA, bitset | yes |
+
+**Bitset variants** (`Bitset*`) use `[]uint64` instead of `[]bool` for the `seen` array — 8x smaller, fits L1 cache for large pattern counts. Use `PatternBitsetWords()` to size the slice.
+
+---
 
 ## License
 
