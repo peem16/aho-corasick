@@ -88,10 +88,6 @@ A separate `RuneAhoCorasick` type operates on `[]rune` instead of `[]byte`. Desi
 - All automaton state is immutable after construction — safe for concurrent use without locks.
 - Output sets are flattened into a single `[]PatternID` slice with per-state base+length indexing to avoid per-state allocations.
 
-## Primary consumer
-
-This library is used by `github.com/wisesight/zocialeye` for keyword matching across ~2639 campaigns per message. The `Peem16Machine` wrapper in `match/campaignformatch/` holds an `*AhoCorasick` (byte) or `*RuneAhoCorasick` (rune) plus a `KeywordToID map[string]PatternID` for condition checking.
-
 ## Files overview
 
 | File | Purpose |
