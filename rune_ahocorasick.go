@@ -43,6 +43,12 @@ const daOutputFlag int32 = -1 << 31 // 0x80000000
 // daUnused is the sentinel value for unused daCheck slots.
 const daUnused int32 = -1
 
+// findBaseMaxProbes caps how many free cells findBase scans before giving up and
+// placing a node in fresh space at the end of the array. It bounds the per-node
+// base search so construction stays near-linear at 100k+ patterns, at the cost
+// of a few wasted slots. Tuned empirically (see BenchmarkNewRune_Huge).
+const findBaseMaxProbes = 48
+
 // RuneAhoCorasick is an Aho-Corasick automaton that operates on rune
 // (Unicode code point) sequences instead of byte sequences.
 //
@@ -337,14 +343,21 @@ func (ra *RuneAhoCorasick) OverlappingPatternSetDFATrack(haystack []rune, seen [
 //
 // Memory: len(daBase) × 16 bytes. For 943K slots → 14.4 MB.
 func (ra *RuneAhoCorasick) BuildVec() {
-	n := int32(len(ra.daBase))
+	n := len(ra.daBase)
 	v := make([]int32, n*4)
-	for i := int32(0); i < n; i++ {
-		off := i * 4
-		v[off+0] = ra.daBase[i]
-		v[off+1] = ra.daCheck[i]
-		v[off+2] = ra.daFail[i]
-		v[off+3] = ra.outputOff[i]
+	// Slice all four sources to [:n] so the compiler proves equal length and
+	// hoists their bounds checks out of the loop. daCheck/daFail/outputOff are
+	// all built with len == len(daBase), so these reslices never panic.
+	base := ra.daBase[:n]
+	check := ra.daCheck[:n]
+	fail := ra.daFail[:n]
+	outOff := ra.outputOff[:n]
+	for i := 0; i < n; i++ {
+		j := i * 4
+		v[j] = base[i]
+		v[j+1] = check[i]
+		v[j+2] = fail[i]
+		v[j+3] = outOff[i]
 	}
 	ra.daVec = v
 }
@@ -491,23 +504,20 @@ func (ra *RuneAhoCorasick) OverlappingBitsetTrack(haystack []rune, seen []uint64
 	n := len(haystack)
 	root := ra.rootSlot
 
-	// Helper: set bit and track dirty word.
-	setBit := func(pid PatternID) {
-		wi := int32(pid / 64)
-		bit := uint64(1) << (pid % 64)
-		if seen[wi]&bit == 0 {
-			seen[wi] |= bit
-			// Track dirty word (may add duplicates — caller deduplicates by zeroing).
-			dirty = append(dirty, wi)
-		}
-	}
-
-	// Root outputs.
+	// Root outputs. setBit is inlined (not a closure) so the compiler can
+	// keep dirty in a register and inline the append growth; a closure that
+	// reassigns the captured dirty slice blocks both and escapes dirty.
 	if ra.outputOff[root] >= 0 {
 		obase := ra.outputOff[root]
 		ol := ra.outLen[root]
 		for i := int32(0); i < ol; i++ {
-			setBit(ra.outputs[obase+i])
+			pid := ra.outputs[obase+i]
+			wi := int32(pid / 64)
+			bit := uint64(1) << (pid % 64)
+			if seen[wi]&bit == 0 {
+				seen[wi] |= bit
+				dirty = append(dirty, wi)
+			}
 		}
 	}
 	if n == 0 {
@@ -563,7 +573,13 @@ func (ra *RuneAhoCorasick) OverlappingBitsetTrack(haystack []rune, seen []uint64
 			obase := outputOff[state]
 			ol := outLen[state]
 			for i := int32(0); i < ol; i++ {
-				setBit(outputs[obase+i])
+				pid := outputs[obase+i]
+				wi := int32(pid / 64)
+				bit := uint64(1) << (pid % 64)
+				if seen[wi]&bit == 0 {
+					seen[wi] |= bit
+					dirty = append(dirty, wi)
+				}
 			}
 		}
 	}
@@ -574,6 +590,9 @@ func (ra *RuneAhoCorasick) OverlappingBitsetTrack(haystack []rune, seen []uint64
 // OverlappingBitsetVecTrack combines the Vec two-phase scan (alpha pre-conversion
 // + interleaved DA) with bitset output ([]uint64 + dirty word tracking).
 // Must call BuildVec() first. Falls back to OverlappingBitsetTrack if daVec is nil.
+//
+// For long haystacks (> 1024 runes) this allocates a temporary alpha buffer each
+// call; use OverlappingBitsetVecTrackBuf to supply a reusable buffer instead.
 func (ra *RuneAhoCorasick) OverlappingBitsetVecTrack(haystack []rune, seen []uint64, dirty []int32) []int32 {
 	if ra == nil || ra.patCount == 0 {
 		return dirty
@@ -581,33 +600,7 @@ func (ra *RuneAhoCorasick) OverlappingBitsetVecTrack(haystack []rune, seen []uin
 	if ra.daVec == nil {
 		return ra.OverlappingBitsetTrack(haystack, seen, dirty)
 	}
-
 	n := len(haystack)
-	root := ra.rootSlot
-
-	// Helper: set bit and track dirty word.
-	setBit := func(pid PatternID) {
-		wi := int32(pid / 64)
-		bit := uint64(1) << (pid % 64)
-		if seen[wi]&bit == 0 {
-			seen[wi] |= bit
-			dirty = append(dirty, wi)
-		}
-	}
-
-	// Root outputs.
-	if ra.outputOff[root] >= 0 {
-		obase := ra.outputOff[root]
-		ol := ra.outLen[root]
-		for i := int32(0); i < ol; i++ {
-			setBit(ra.outputs[obase+i])
-		}
-	}
-	if n == 0 {
-		return dirty
-	}
-
-	// ---- Phase 1: Rune → alpha pre-conversion ----
 	var alphaBuf [1024]int32
 	var alphas []int32
 	if n <= 1024 {
@@ -615,28 +608,85 @@ func (ra *RuneAhoCorasick) OverlappingBitsetVecTrack(haystack []rune, seen []uin
 	} else {
 		alphas = make([]int32, n)
 	}
+	ra.fillAlphas(haystack, alphas)
+	return ra.bitsetVecScan(alphas, seen, dirty)
+}
 
+// OverlappingBitsetVecTrackBuf is OverlappingBitsetVecTrack with a caller-supplied
+// alpha scratch buffer, eliminating the per-call allocation for long haystacks.
+// Pass the same scratch across calls; it grows as needed and the (possibly grown)
+// slice is returned alongside dirty for reuse:
+//
+//	dirty, scratch = m.OverlappingBitsetVecTrackBuf(text, seen, dirty[:0], scratch)
+func (ra *RuneAhoCorasick) OverlappingBitsetVecTrackBuf(haystack []rune, seen []uint64, dirty []int32, scratch []int32) ([]int32, []int32) {
+	if ra == nil || ra.patCount == 0 {
+		return dirty, scratch
+	}
+	if ra.daVec == nil {
+		return ra.OverlappingBitsetTrack(haystack, seen, dirty), scratch
+	}
+	n := len(haystack)
+	if cap(scratch) < n {
+		scratch = make([]int32, n)
+	} else {
+		scratch = scratch[:n]
+	}
+	ra.fillAlphas(haystack, scratch)
+	return ra.bitsetVecScan(scratch, seen, dirty), scratch
+}
+
+// fillAlphas writes the compact alpha index of each rune of haystack into
+// alphas[:len(haystack)] (0 = rune not in any pattern). alphas may hold stale
+// data from a reused buffer, so every slot is written.
+func (ra *RuneAhoCorasick) fillAlphas(haystack []rune, alphas []int32) {
+	n := len(haystack)
 	rtPtr := unsafe.Pointer(unsafe.SliceData(ra.runeTable))
 	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
 	minRune := ra.minRune
 	rtLen := ra.runeTableLen
-
 	for i := 0; i < n; i++ {
+		a := int32(0)
 		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(i)*4))
 		off := uint32(r) - minRune
 		if off < rtLen {
-			alphas[i] = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+			a = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+		}
+		alphas[i] = a
+	}
+}
+
+// bitsetVecScan emits root outputs then runs the interleaved-DA scan over the
+// pre-converted alphas, setting bits in seen and tracking dirty words.
+func (ra *RuneAhoCorasick) bitsetVecScan(alphas []int32, seen []uint64, dirty []int32) []int32 {
+	root := ra.rootSlot
+
+	// Root outputs. setBit is inlined (see OverlappingBitsetTrack) to keep
+	// dirty in a register and avoid escaping it through a closure capture.
+	if ra.outputOff[root] >= 0 {
+		obase := ra.outputOff[root]
+		ol := ra.outLen[root]
+		for i := int32(0); i < ol; i++ {
+			pid := ra.outputs[obase+i]
+			wi := int32(pid / 64)
+			bit := uint64(1) << (pid % 64)
+			if seen[wi]&bit == 0 {
+				seen[wi] |= bit
+				dirty = append(dirty, wi)
+			}
 		}
 	}
 
-	// ---- Phase 2: Interleaved DA scan with bitset output ----
+	n := len(alphas)
+	if n == 0 {
+		return dirty
+	}
+
 	outputs := ra.outputs
 	outLen := ra.outLen
 	daVec := ra.daVec
 	vecPtr := unsafe.Pointer(unsafe.SliceData(daVec))
 
 	state := root
-
 	for i := 0; i < n; i++ {
 		alpha := alphas[i]
 		if alpha == 0 {
@@ -657,12 +707,18 @@ func (ra *RuneAhoCorasick) OverlappingBitsetVecTrack(haystack []rune, seen []uin
 			state = *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+8))
 		}
 
+		// base<0 (output flag) guarantees outputOff>=0, so the old inner
+		// `if ooff >= 0` was dead and has been removed.
 		if *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) < 0 {
 			ooff := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+12))
-			if ooff >= 0 {
-				ol := outLen[state]
-				for j := int32(0); j < ol; j++ {
-					setBit(outputs[ooff+j])
+			ol := outLen[state]
+			for j := int32(0); j < ol; j++ {
+				pid := outputs[ooff+j]
+				wi := int32(pid / 64)
+				bit := uint64(1) << (pid % 64)
+				if seen[wi]&bit == 0 {
+					seen[wi] |= bit
+					dirty = append(dirty, wi)
 				}
 			}
 		}
@@ -818,14 +874,23 @@ func buildRuneNFA(patterns [][]rune) *RuneAhoCorasick {
 	ra.buildDoubleArray(states, tmpTrans, trieOutOff, trieOutLen)
 
 	// ---- Phase 6: deep copy patterns & cache lengths ----
+	// Patterns share a single rune backing array instead of one allocation per
+	// pattern (N allocs → 1). Each ra.patterns[i] is capacity-bounded so a
+	// caller appending to a PatternRunes() result cannot corrupt its neighbour.
 	ra.patCount = len(patterns)
+	totalRunes := 0
+	for _, p := range patterns {
+		totalRunes += len(p)
+	}
+	backing := make([]rune, totalRunes)
 	ra.patterns = make([][]rune, len(patterns))
 	ra.patLens = make([]int32, len(patterns))
+	off := 0
 	for i, p := range patterns {
-		cp := make([]rune, len(p))
-		copy(cp, p)
-		ra.patterns[i] = cp
-		ra.patLens[i] = int32(len(p))
+		m := copy(backing[off:], p)
+		ra.patterns[i] = backing[off : off+m : off+m]
+		ra.patLens[i] = int32(m)
+		off += m
 	}
 
 	return ra
@@ -836,6 +901,20 @@ func buildRuneNFA(patterns [][]rune) *RuneAhoCorasick {
 // ---------------------------------------------------------------------------
 
 func runeLookupTmp(tr []runeNFATrans, r rune) (stateID, bool) {
+	// Most trie nodes have few children; a linear scan with an early sorted
+	// exit beats binary search (no division, better branch prediction) for
+	// short lists. Falls back to binary search for wide nodes (near the root).
+	if len(tr) <= 8 {
+		for i := 0; i < len(tr); i++ {
+			if tr[i].r == r {
+				return tr[i].next, true
+			}
+			if tr[i].r > r {
+				return 0, false
+			}
+		}
+		return 0, false
+	}
 	lo, hi := 0, len(tr)
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)
@@ -870,42 +949,48 @@ func runeAddTransTmp(tr []runeNFATrans, r rune, next stateID) []runeNFATrans {
 // buildRuneAlphabet collects all unique runes from patterns and builds a
 // compact mapping from rune to 1-based index.
 func (ra *RuneAhoCorasick) buildRuneAlphabet(patterns [][]rune) {
-	seen := make(map[rune]bool)
+	// Presence-array alphabet build: O(total + range) with a single allocation
+	// (runeTable itself), no map and no sort. Beats both the old map[rune]bool
+	// (allocation + hashing — costly for the many tiny per-campaign machines)
+	// and a sort-all-runes approach (which sorts every duplicated rune — costly
+	// for large pattern sets that share a small alphabet).
+	minR, maxR := rune(0), rune(0)
+	first := true
 	for _, pat := range patterns {
 		for _, r := range pat {
-			seen[r] = true
+			if first {
+				minR, maxR = r, r
+				first = false
+			} else if r < minR {
+				minR = r
+			} else if r > maxR {
+				maxR = r
+			}
 		}
 	}
-	if len(seen) == 0 {
+	if first { // no runes in any pattern
 		ra.alphaSize = 1
 		return
-	}
-
-	first := true
-	var minR, maxR rune
-	for r := range seen {
-		if first || r < minR {
-			minR = r
-		}
-		if first || r > maxR {
-			maxR = r
-		}
-		first = false
 	}
 
 	ra.minRune = uint32(minR)
 	rangeSize := int(maxR-minR) + 1
 	ra.runeTable = make([]uint16, rangeSize)
 	ra.runeTableLen = uint32(rangeSize)
-	idx := uint16(1)
-	sorted := make([]rune, 0, len(seen))
-	for r := range seen {
-		sorted = append(sorted, r)
+
+	// Mark present runes (temporary marker), then renumber ascending so each
+	// distinct rune gets a stable 1-based alphabet index in rune order.
+	for _, pat := range patterns {
+		for _, r := range pat {
+			ra.runeTable[r-minR] = 1
+		}
 	}
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
-	for _, r := range sorted {
-		ra.runeTable[r-minR] = idx
-		idx++
+	idx := uint16(1)
+	for i := range ra.runeTable {
+		if ra.runeTable[i] != 0 {
+			ra.runeTable[i] = idx
+			idx++
+		}
 	}
 	ra.alphaSize = int32(idx)
 }
@@ -917,6 +1002,20 @@ func (ra *RuneAhoCorasick) buildRuneAlphabet(patterns [][]rune) {
 type tmpState struct {
 	fail      stateID
 	outputIdx int32
+}
+
+// fillInt32 sets every element of s to v. It seeds the first element and then
+// doubles the filled region with copy (memmove), which the runtime vectorizes —
+// far faster than a scalar loop for the large -1/daUnused init arrays in
+// double-array construction (no memset-to-nonzero primitive exists in Go).
+func fillInt32(s []int32, v int32) {
+	if len(s) == 0 {
+		return
+	}
+	s[0] = v
+	for i := 1; i < len(s); i *= 2 {
+		copy(s[i:], s[:i])
+	}
 }
 
 // buildDoubleArray constructs the double-array trie from the temporary trie.
@@ -973,29 +1072,45 @@ func (ra *RuneAhoCorasick) buildDoubleArray(
 	}
 	ra.daBase = make([]int32, daSize)
 	ra.daCheck = make([]int32, daSize)
-	for i := range ra.daCheck {
-		ra.daCheck[i] = daUnused
-	}
+	fillInt32(ra.daCheck, daUnused)
 
 	// Map trie state → DA slot.
 	daStateMap := make([]int32, numTrieStates)
-	for i := range daStateMap {
-		daStateMap[i] = -1
-	}
+	fillInt32(daStateMap, -1)
 
 	// Root at DA slot 0.
 	ra.rootSlot = 0
 	daStateMap[startStateID] = 0
 	ra.daCheck[0] = 0 // root's check = self (sentinel)
 
-	nextCheckPos := int32(1)
+	// Doubly-linked free-cell list over slots [1, daSize). Slot 0 is the root,
+	// never free. Invariant: a cell is in this list iff daCheck[cell]==daUnused.
+	// findBase draws candidate bases only from free cells, so it skips the long
+	// runs of occupied cells that make a plain linear probe O(n²) at scale —
+	// the dominant construction cost at 100k+ patterns. prevFree/nextFree are
+	// construction-only scratch (discarded), so the built machine is unchanged.
+	prevFree := make([]int32, daSize)
+	nextFree := make([]int32, daSize)
+	var freeHead, freeTail int32 = -1, -1
+	if daSize > 1 {
+		for i := int32(1); i < daSize; i++ {
+			prevFree[i] = i - 1
+			nextFree[i] = i + 1
+		}
+		prevFree[1] = -1
+		nextFree[daSize-1] = -1
+		freeHead = 1
+		freeTail = daSize - 1
+	}
 
-	// growDA grows the arrays if needed.
+	// growDA grows the arrays if needed and splices the new cells onto the
+	// free-list tail (keeping the list index-ordered).
 	growDA := func(minSize int32) {
-		if minSize <= int32(len(ra.daBase)) {
+		old := int32(len(ra.daBase))
+		if minSize <= old {
 			return
 		}
-		newSize := int32(len(ra.daBase)) * 2
+		newSize := old * 2
 		if newSize < minSize {
 			newSize = minSize
 		}
@@ -1004,42 +1119,119 @@ func (ra *RuneAhoCorasick) buildDoubleArray(
 		ra.daBase = newBase
 
 		newCheck := make([]int32, newSize)
-		for i := int32(len(ra.daCheck)); i < newSize; i++ {
-			newCheck[i] = daUnused
-		}
+		fillInt32(newCheck[old:], daUnused)
 		copy(newCheck, ra.daCheck)
 		ra.daCheck = newCheck
+
+		newPrev := make([]int32, newSize)
+		copy(newPrev, prevFree)
+		prevFree = newPrev
+		newNext := make([]int32, newSize)
+		copy(newNext, nextFree)
+		nextFree = newNext
+
+		for i := old; i < newSize; i++ {
+			prevFree[i] = i - 1
+			nextFree[i] = i + 1
+		}
+		nextFree[newSize-1] = -1
+		if freeTail == -1 {
+			freeHead = old
+			prevFree[old] = -1
+		} else {
+			nextFree[freeTail] = old
+			prevFree[old] = freeTail
+		}
+		freeTail = newSize - 1
 	}
 
-	// findBase finds a base value b such that daCheck[b + alpha] == daUnused
-	// for all alphas in children.
-	findBase := func(children []alphaChild) int32 {
+	// unlink removes a now-occupied cell from the free list.
+	unlink := func(cell int32) {
+		pr := prevFree[cell]
+		nx := nextFree[cell]
+		if pr != -1 {
+			nextFree[pr] = nx
+		} else {
+			freeHead = nx
+		}
+		if nx != -1 {
+			prevFree[nx] = pr
+		} else {
+			freeTail = pr
+		}
+	}
+
+	// Bump allocator for capped placements (see findBase). Hands out cells from
+	// an exclusive fresh region that is detached from the free list, so normal
+	// findBase never collides with bump-placed nodes and bump-placed cells need
+	// no unlink. Wastes the gaps between child alphas — the time-for-space part
+	// of the cedar/darts trade.
+	var bumpPtr, bumpEnd int32
+	ensureBump := func(span int32) {
+		if bumpEnd != 0 && bumpPtr+span <= bumpEnd {
+			return
+		}
+		old := int32(len(ra.daBase))
+		chunk := old / 2
+		if chunk < span+1024 {
+			chunk = span + 1024
+		}
+		savedTail := freeTail
+		growDA(old + chunk)
+		// Detach the freshly-appended block [old, len) from the free list.
+		if savedTail == -1 {
+			freeHead, freeTail = -1, -1
+		} else {
+			nextFree[savedTail] = -1
+			freeTail = savedTail
+		}
+		bumpPtr, bumpEnd = old, int32(len(ra.daBase))
+	}
+
+	// findBase finds a base b such that daCheck[b+alpha]==daUnused for every
+	// child alpha. Candidate bases come from the free list: each free cell p is
+	// tried as the home of children[0] (b = p-firstAlpha, free by construction),
+	// so only the remaining children are verified. The list is index-ordered, so
+	// once p>=firstAlpha it only grows.
+	//
+	// To keep construction near-linear at 100k+ patterns, the free-cell probe is
+	// capped (findBaseMaxProbes): a node that does not fit within the cap is
+	// bump-allocated in exclusive fresh space instead of scanning the whole free
+	// list. This is the cedar/darts time-for-space trade — it leaves a few empty
+	// slots but turns the worst-case O(n²) probe into bounded work per node.
+	// Returns (base, bumped); when bumped the caller must NOT unlink the children
+	// (they are not in the free list).
+	findBase := func(children []alphaChild) (int32, bool) {
 		if len(children) == 0 {
-			return int32(0)
+			return int32(0), false
 		}
 		firstAlpha := children[0].alpha
-		pos := nextCheckPos
-		if pos < firstAlpha {
-			pos = firstAlpha
+		lastAlpha := children[len(children)-1].alpha
+
+		p := freeHead
+		for p != -1 && p < firstAlpha { // skip cells too small (negative base)
+			p = nextFree[p]
 		}
-
-		for {
-			b := pos - firstAlpha
-			maxSlot := b + children[len(children)-1].alpha
-			growDA(maxSlot + 1)
-
+		for probes := 0; p != -1 && probes < findBaseMaxProbes; probes++ {
+			b := p - firstAlpha
+			growDA(b + lastAlpha + 1)
 			ok := true
-			for _, c := range children {
-				if ra.daCheck[b+c.alpha] != daUnused {
+			for ci := 1; ci < len(children); ci++ {
+				if ra.daCheck[b+children[ci].alpha] != daUnused {
 					ok = false
 					break
 				}
 			}
 			if ok {
-				return b
+				return b, false
 			}
-			pos++
+			p = nextFree[p]
 		}
+		// Free list exhausted or probe cap hit: bump-allocate in fresh space.
+		ensureBump(lastAlpha - firstAlpha + 1)
+		b := bumpPtr - firstAlpha
+		bumpPtr += lastAlpha - firstAlpha + 1
+		return b, true
 	}
 
 	// BFS through trie states, placing them in the double-array.
@@ -1056,19 +1248,17 @@ func (ra *RuneAhoCorasick) buildDoubleArray(
 			continue
 		}
 
-		b := findBase(children)
+		b, bumped := findBase(children)
 		ra.daBase[daSlot] = b
 
 		for _, c := range children {
 			childDASlot := b + c.alpha
 			ra.daCheck[childDASlot] = daSlot
+			if !bumped {
+				unlink(childDASlot) // now occupied; remove from the free list
+			}
 			daStateMap[c.trieState] = childDASlot
 			bfsQueue = append(bfsQueue, c.trieState)
-		}
-
-		// Advance nextCheckPos past dense regions.
-		for nextCheckPos < int32(len(ra.daCheck)) && ra.daCheck[nextCheckPos] != daUnused {
-			nextCheckPos++
 		}
 	}
 
@@ -1092,9 +1282,7 @@ func (ra *RuneAhoCorasick) buildDoubleArray(
 	ra.daFail = make([]int32, usedSize)
 	ra.outputOff = make([]int32, usedSize)
 	ra.outLen = make([]int32, usedSize)
-	for i := range ra.outputOff {
-		ra.outputOff[i] = -1
-	}
+	fillInt32(ra.outputOff, -1)
 
 	for trieState := 0; trieState < numTrieStates; trieState++ {
 		daSlot := daStateMap[trieState]
@@ -1316,7 +1504,7 @@ func (ra *RuneAhoCorasick) OverlappingPatternSetTrack(haystack []rune, seen []bo
 // FindOverlappingAll returns all overlapping matches in haystack with
 // rune-based start/end positions.
 func (ra *RuneAhoCorasick) FindOverlappingAll(haystack []rune) []RuneMatch {
-	return ra.FindOverlappingAllAppend(nil, haystack)
+	return ra.FindOverlappingAllAppend(make([]RuneMatch, 0, 16), haystack)
 }
 
 // FindOverlappingAllAppend appends all overlapping matches to dst and returns it.
@@ -1355,15 +1543,21 @@ func (ra *RuneAhoCorasick) FindOverlappingAllAppend(dst []RuneMatch, haystack []
 	runeTableLen := ra.runeTableLen
 	minRune := ra.minRune
 
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
+	rtPtr := unsafe.Pointer(unsafe.SliceData(runeTable))
+	dbPtr := unsafe.Pointer(unsafe.SliceData(daBase))
+	dcPtr := unsafe.Pointer(unsafe.SliceData(daCheck))
+	dfPtr := unsafe.Pointer(unsafe.SliceData(daFail))
+
 	state := rootSlot
 
 	for pos := 0; pos < n; pos++ {
-		r := haystack[pos]
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(pos)*4))
 
 		off := uint32(r) - minRune
 		alpha := int32(0)
 		if off < runeTableLen {
-			alpha = int32(runeTable[off])
+			alpha = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
 		}
 
 		if alpha == 0 {
@@ -1371,21 +1565,24 @@ func (ra *RuneAhoCorasick) FindOverlappingAllAppend(dst []RuneMatch, haystack []
 			continue
 		}
 
-		// DA transition with failure link following.
+		// DA transition with failure link following. base+alpha is always in
+		// bounds thanks to the alphaSize padding appended at the end of
+		// buildDoubleArray, so no length guard is needed (matches
+		// OverlappingBitsetTrack).
 		for {
-			base := daBase[state] & 0x7FFFFFFF
+			base := *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4)) & 0x7FFFFFFF
 			t := base + alpha
-			if t < int32(len(daCheck)) && daCheck[t] == state {
+			if *(*int32)(unsafe.Add(dcPtr, uintptr(t)*4)) == state {
 				state = t
 				break
 			}
 			if state == rootSlot {
 				break
 			}
-			state = daFail[state]
+			state = *(*int32)(unsafe.Add(dfPtr, uintptr(state)*4))
 		}
 
-		if daBase[state] < 0 { // output flag
+		if *(*int32)(unsafe.Add(dbPtr, uintptr(state)*4)) < 0 { // output flag
 			obase := outputOff[state]
 			ol := outLen[state]
 			end := pos + 1
