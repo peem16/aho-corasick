@@ -1132,3 +1132,267 @@ func TestRuneLargeBuild_ScanInvariant(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Tests: differential vs naive reference matcher
+// ---------------------------------------------------------------------------
+
+// naiveOverlappingMatches is the brute-force reference: every (pid, start, end)
+// where hay[start:end] equals patterns[pid]. Returned as a tuple multiset.
+// Empty patterns are skipped (AC's positional empty-pattern semantics
+// intentionally differ from "matches at every offset").
+func naiveOverlappingMatches(patterns [][]rune, hay []rune) map[[3]int]int {
+	res := make(map[[3]int]int)
+	for pid, pat := range patterns {
+		if len(pat) == 0 {
+			continue
+		}
+		for start := 0; start+len(pat) <= len(hay); start++ {
+			eq := true
+			for k := range pat {
+				if hay[start+k] != pat[k] {
+					eq = false
+					break
+				}
+			}
+			if eq {
+				res[[3]int{pid, start, start + len(pat)}]++
+			}
+		}
+	}
+	return res
+}
+
+// TestRuneDifferentialNaive cross-checks FindOverlappingAll and
+// OverlappingPatternSet against the naive reference. Unlike the existing
+// invariant tests (which compare two APIs reading the same outputs table, and
+// so cannot see a fail-inherited pattern dropped from BOTH), this catches any
+// output-set construction bug. The tiny alphabet maximizes fail-chain sharing;
+// the seeded suffix chain and duplicate pattern hit the merge edge cases.
+func TestRuneDifferentialNaive(t *testing.T) {
+	rng := rand.New(rand.NewSource(2026))
+	alphabet := []rune("abcก")
+
+	for round := 0; round < 3; round++ {
+		var pats [][]rune
+		for _, s := range []string{"a", "ab", "abc", "bc", "c"} {
+			pats = append(pats, []rune(s))
+		}
+		for len(pats) < 300 {
+			l := rng.Intn(6) + 1
+			p := make([]rune, l)
+			for k := range p {
+				p[k] = alphabet[rng.Intn(len(alphabet))]
+			}
+			pats = append(pats, p) // duplicates allowed (and likely) on purpose
+		}
+		pats = append(pats, []rune("ab")) // deterministic duplicate: 2 pids, 1 terminal node
+
+		ra, err := NewRune(pats)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		check := func(label string, hay []rune) {
+			t.Helper()
+			want := naiveOverlappingMatches(pats, hay)
+
+			got := make(map[[3]int]int)
+			for _, m := range ra.FindOverlappingAllAppend(nil, hay) {
+				got[[3]int{int(m.PatternID()), m.Start(), m.End()}]++
+			}
+			if len(got) != len(want) {
+				t.Fatalf("round %d %s hay=%q: %d distinct tuples, want %d",
+					round, label, string(hay), len(got), len(want))
+			}
+			for tup, n := range want {
+				if got[tup] != n {
+					t.Fatalf("round %d %s hay=%q: tuple %v count=%d, want %d",
+						round, label, string(hay), tup, got[tup], n)
+				}
+			}
+
+			seen := make([]bool, ra.PatternCount())
+			ra.OverlappingPatternSet(hay, seen)
+			wantSeen := make([]bool, len(pats))
+			for tup := range want {
+				wantSeen[tup[0]] = true
+			}
+			for pid := range seen {
+				if seen[pid] != wantSeen[pid] {
+					t.Fatalf("round %d %s hay=%q: PatternSet[%d]=%v, naive=%v",
+						round, label, string(hay), pid, seen[pid], wantSeen[pid])
+				}
+			}
+		}
+
+		hays := make([][]rune, 0, 200)
+		for iter := 0; iter < 200; iter++ {
+			hl := rng.Intn(60) + 1
+			hay := make([]rune, hl)
+			for k := range hay {
+				hay[k] = alphabet[rng.Intn(len(alphabet))]
+			}
+			hays = append(hays, hay)
+		}
+		for _, hay := range hays {
+			check("SoA", hay)
+		}
+		ra.BuildVec() // re-run everything through the vec paths
+		for _, hay := range hays {
+			check("Vec", hay)
+		}
+	}
+}
+
+// TestRuneEmptyPattern_InheritedEverywhere locks the root-output inheritance
+// edge of output-set materialization: an empty pattern's pid lives in root's
+// own outputs and must be inherited by every state's full set.
+func TestRuneEmptyPattern_InheritedEverywhere(t *testing.T) {
+	ra := buildRune(t, "", "ab", "b")
+	hays := []string{"ab", "zab", "zzz", "b", ""}
+
+	for _, hay := range hays {
+		seen := make([]bool, ra.PatternCount())
+		ra.OverlappingPatternSet([]rune(hay), seen)
+		if !seen[0] {
+			t.Fatalf("hay=%q: empty pattern not reported by OverlappingPatternSet", hay)
+		}
+	}
+
+	before := make([][]RuneMatch, len(hays))
+	for i, hay := range hays {
+		before[i] = ra.FindOverlappingAll([]rune(hay))
+	}
+	ra.BuildVec()
+	for i, hay := range hays {
+		after := ra.FindOverlappingAll([]rune(hay))
+		if !runeMatchesEqual(before[i], after) {
+			t.Fatalf("hay=%q: FindOverlappingAll differs after BuildVec:\nbefore=%v\nafter=%v",
+				hay, before[i], after)
+		}
+	}
+}
+
+func runeMatchesEqual(a, b []RuneMatch) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestRuneFindOverlappingAllVec_MatchesSoA guards the interleaved-DA fast path
+// of FindOverlappingAllAppend: results must deep-equal the SoA path including
+// emission order.
+func TestRuneFindOverlappingAllVec_MatchesSoA(t *testing.T) {
+	pats := append(runesOf("สวัสดี", "ครับ", "ส", "วัสดีค", "ดีครับ"),
+		genWidePatterns(2000, 11)...)
+	ra, err := NewRune(pats)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rng := rand.New(rand.NewSource(123))
+	hays := make([][]rune, 0, 101)
+	for i := 0; i < 100; i++ {
+		hl := rng.Intn(80) + 1
+		hay := make([]rune, hl)
+		for k := range hay {
+			hay[k] = wideAlphabet[rng.Intn(len(wideAlphabet))]
+		}
+		hays = append(hays, hay)
+	}
+	long := make([]rune, 2000) // well past any internal buffering threshold
+	for k := range long {
+		long[k] = wideAlphabet[rng.Intn(len(wideAlphabet))]
+	}
+	hays = append(hays, long)
+
+	soa := make([][]RuneMatch, len(hays))
+	for i, hay := range hays {
+		soa[i] = ra.FindOverlappingAll(hay)
+	}
+
+	ra.BuildVec()
+	for i, hay := range hays {
+		vec := ra.FindOverlappingAll(hay)
+		if !runeMatchesEqual(soa[i], vec) {
+			t.Fatalf("hay %d (len %d): Vec path differs from SoA: %d vs %d matches",
+				i, len(hay), len(vec), len(soa[i]))
+		}
+	}
+}
+
+// TestRuneBuildVec_OutVecInvariant pins the documented daVec/outVec contract
+// (white-box): the 4th daVec field is a valid outVec offset iff the slot's
+// output flag (base bit 31) is set, in which case outVec holds the slot's
+// outLen followed by exactly its outputs[] region; otherwise the field is -1.
+func TestRuneBuildVec_OutVecInvariant(t *testing.T) {
+	pats := append(runesOf("", "ab", "b"), genWidePatterns(500, 3)...)
+	ra, err := NewRune(pats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ra.BuildVec()
+
+	for slot := 0; slot*4 < len(ra.daVec); slot++ {
+		base := ra.daVec[slot*4]
+		ooff := ra.daVec[slot*4+3]
+		if base >= 0 {
+			if ooff != -1 {
+				t.Fatalf("slot %d: no output flag but outVecOff=%d (want -1)", slot, ooff)
+			}
+			continue
+		}
+		if ooff < 0 {
+			t.Fatalf("slot %d: output flag set but outVecOff=%d", slot, ooff)
+		}
+		ol := ra.outLen[slot]
+		if int32(ra.outVec[ooff]) != ol {
+			t.Fatalf("slot %d: outVec count=%d, outLen=%d", slot, ra.outVec[ooff], ol)
+		}
+		oo := ra.outputOff[slot]
+		for j := int32(0); j < ol; j++ {
+			if ra.outVec[ooff+1+j] != ra.outputs[oo+j] {
+				t.Fatalf("slot %d: outVec pid[%d]=%d != outputs pid %d",
+					slot, j, ra.outVec[ooff+1+j], ra.outputs[oo+j])
+			}
+		}
+	}
+}
+
+// BenchmarkRuneFindOverlappingAll_Huge measures match extraction on the
+// 100k-pattern machine (8k-rune haystack): SoA vs interleaved-DA (BuildVec).
+func BenchmarkRuneFindOverlappingAll_Huge(b *testing.B) {
+	pats := genWidePatterns(100000, 42)
+	rng := rand.New(rand.NewSource(7))
+	hay := make([]rune, 8000)
+	for i := range hay {
+		hay[i] = wideAlphabet[rng.Intn(len(wideAlphabet))]
+	}
+
+	b.Run("SoA", func(b *testing.B) {
+		ra, _ := NewRune(pats)
+		var buf []RuneMatch
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			buf = ra.FindOverlappingAllAppend(buf[:0], hay)
+		}
+	})
+	b.Run("Vec", func(b *testing.B) {
+		ra, _ := NewRune(pats)
+		ra.BuildVec()
+		var buf []RuneMatch
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			buf = ra.FindOverlappingAllAppend(buf[:0], hay)
+		}
+	})
+}

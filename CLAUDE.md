@@ -58,8 +58,10 @@ A separate `RuneAhoCorasick` type operates on `[]rune` instead of `[]byte`. Desi
 **Public API** (mirrors byte-based where applicable):
 - `OverlappingPatternSet(haystack []rune, seen []bool)` — hot path, zero-alloc bitmap
 - `FindOverlappingAll(haystack []rune) []RuneMatch` — collect matches with rune positions
-- `FindOverlappingAllAppend(dst []RuneMatch, haystack []rune) []RuneMatch` — append variant for buffer reuse
+- `FindOverlappingAllAppend(dst []RuneMatch, haystack []rune) []RuneMatch` — append variant for buffer reuse; routes through the interleaved-DA fast path when `BuildVec()` has been called
 - `IsMatch(haystack []rune) bool` — short-circuit on first match
+- `OverlappingBitsetTrack` / `OverlappingBitsetVecTrack(/Buf)` — bitset (`[]uint64`) output with dirty-word tracking; the `Vec` variants need `BuildVec()`
+- `BuildVec()` / `BuildDFA()` — optional acceleration tables (see below)
 - `PatternCount() int`, `Pattern(id PatternID) []rune`, `PatternRunes(id PatternID) []rune`
 
 **Key internals**:
@@ -68,7 +70,8 @@ A separate `RuneAhoCorasick` type operates on `[]rune` instead of `[]byte`. Desi
 - **Output flag (bit 31)**: `daBase[slot]` high bit indicates pattern output exists. Hot path checks `daBase[state] < 0` to skip output drain in the common no-match case.
 - **`unsafe.Pointer` hot loop**: `OverlappingPatternSet` uses `unsafe.Add` for haystack, runeTable, daBase, daCheck, and daFail access to eliminate Go bounds checks.
 - **Memory**: ~8 bytes per DA slot. Typical 50-state machine uses ~300-500 slots = **2.4-4KB**, vs ~40KB for previous dense-table approach. **10-15x reduction** → fits in L1 cache (critical for per-campaign matching with 2639+ cold machines).
-- **NFA-only**: No DFA variant — compact double-array is already cache-optimal.
+- **Construction at scale**: output sets are materialized directly into the flat `outputs` array (counting sort over terminal nodes + BFS-order merge with the fail state's region) — no per-state slice propagation. 100k-pattern build ≈ **83 ms / 33k allocs** (was 122 ms / 387k allocs after PR #11, ~2.2 s before it).
+- **Optional acceleration tables**: `BuildVec()` interleaves `[base, check, fail, outVecOff]` (16 B/slot, check[t] load prefetches base[t]) and builds `outVec`, a length-prefixed output table (`outVec[off]` = count, pids follow) so vec drains read one stream instead of touching `outLen`. Targets large machines / long text — on tiny all-in-L1 machines plain `OverlappingBitsetTrack` is faster. `BuildDFA()` precomputes full transitions (memory-heavy). Both are mutators: call before sharing across goroutines.
 
 **Performance** (Thai text, 10 patterns, Intel i7-14700KF):
 | Variant | ns/op | Per-campaign (100) | vs Byte |

@@ -381,11 +381,13 @@ Methods with `Vec` use an **interleaved double-array (DA) layout** built by `Bui
 
 Normally the DA stores `base`, `check`, `fail`, and `outputOff` in four separate arrays. Accessing a slot may require up to 4 cache-line loads.
 
-`BuildVec()` packs all four fields for each slot together (16 bytes per slot):
+`BuildVec()` packs four fields for each slot together (16 bytes per slot):
 ```
-[base0, check0, fail0, outOff0, base1, check1, fail1, outOff1, ...]
+[base0, check0, fail0, outVecOff0, base1, check1, fail1, outVecOff1, ...]
 ```
 When the CPU loads `check[t]` to verify a transition, `base[t]` is already in the same cache line. On the next loop iteration (state = t), `base[t]` is already in L1 — **one fewer L3 miss per rune**.
+
+The 4th field is an offset into `outVec`, a length-prefixed output table also built by `BuildVec()` (`outVec[off]` = count, pattern IDs follow; `-1` = no output). Vec scans read match counts and pattern IDs from this single stream instead of touching the separate `outLen` array — one fewer cold cache line per matching position.
 
 Call `BuildVec()` once, then use `*Vec*` methods:
 
