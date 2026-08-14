@@ -789,6 +789,43 @@ func TestRuneBitsetVec_MatchesBitset(t *testing.T) {
 	}
 }
 
+func TestRuneBitsetVec_BufMatches(t *testing.T) {
+	ra := buildRune(t, "ab", "abc", "bc", "ค่ะ", "สวัสดี", "world")
+	ra.BuildVec()
+	words := ra.PatternBitsetWords()
+
+	// Mix short and long (>1024 rune) haystacks; reuse one scratch across all
+	// calls so stale-buffer handling is exercised.
+	var long []rune
+	for i := 0; i < 1500; i++ {
+		long = append(long, []rune("ab cd สวัสดี world ค่ะ ")...)
+	}
+	texts := [][]rune{
+		[]rune("xxabcbcyy"),
+		[]rune("สวัสดีค่ะ world"),
+		[]rune(""),
+		long,
+		[]rune("ab"),
+	}
+
+	var scratch []int32
+	for _, hay := range texts {
+		want := make([]uint64, words)
+		ra.OverlappingBitsetVecTrack(hay, want, nil)
+
+		got := make([]uint64, words)
+		var dirty []int32
+		dirty, scratch = ra.OverlappingBitsetVecTrackBuf(hay, got, dirty[:0], scratch)
+		_ = dirty
+
+		for w := 0; w < words; w++ {
+			if want[w] != got[w] {
+				t.Errorf("len(hay)=%d word=%d: Vec=0x%x Buf=0x%x", len(hay), w, want[w], got[w])
+			}
+		}
+	}
+}
+
 func TestRuneBitsetVec_LargeText(t *testing.T) {
 	ra := buildRune(t, "ab", "cd", "ef")
 	ra.BuildVec()
@@ -849,4 +886,249 @@ func BenchmarkRuneBitsetVec_vs_NFA(b *testing.B) {
 			dirty = ac.OverlappingBitsetVecTrack(hay, seen, dirty[:0])
 		}
 	})
+}
+
+// BenchmarkRuneBitsetVec_Large exercises OverlappingBitsetVecTrack in its
+// intended regime: a long haystack where the interleaved-DA two-phase scan
+// is meant to pay off against the single-pass sibling.
+func BenchmarkRuneBitsetVec_Large(b *testing.B) {
+	thaiPatterns := []string{
+		"สวัสดี", "ครับ", "ค่ะ", "ขอบคุณ", "ประเทศไทย",
+		"กรุงเทพ", "มหานคร", "ภาษาไทย", "คนไทย", "อาหาร",
+	}
+	ac, _ := NewRune(runesOf(thaiPatterns...))
+	ac.BuildVec()
+
+	var sb strings.Builder
+	for i := 0; i < 200; i++ {
+		sb.WriteString("สวัสดีครับ วันนี้อากาศดี ไปร้านอาหารแถวตลาดกันไหม ขอบคุณค่ะ ")
+	}
+	hay := []rune(sb.String())
+	words := ac.PatternBitsetWords()
+
+	b.Run("BitsetTrack_NFA", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for w := range seen {
+				seen[w] = 0
+			}
+			dirty = ac.OverlappingBitsetTrack(hay, seen, dirty[:0])
+		}
+	})
+
+	b.Run("BitsetVecTrack", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for w := range seen {
+				seen[w] = 0
+			}
+			dirty = ac.OverlappingBitsetVecTrack(hay, seen, dirty[:0])
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks: construction (NewRune) + BuildVec
+// ---------------------------------------------------------------------------
+
+// wideAlphabet is a broad Thai+latin+digit alphabet. Patterns drawn from it
+// produce a sparse double-array that stresses findBase during construction.
+var wideAlphabet = []rune("abcdefghijklmnopqrstuvwxyz0123456789" +
+	"กขคงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮ")
+
+// BenchmarkRuneScan_Huge measures scan throughput on a 100k-pattern machine
+// (the unified-machine regime) across the NFA / Vec / DFA backends.
+func BenchmarkRuneScan_Huge(b *testing.B) {
+	ra, _ := NewRune(genWidePatterns(100000, 42))
+	ra.BuildVec()
+	rng := rand.New(rand.NewSource(7))
+	hay := make([]rune, 8000)
+	for i := range hay {
+		hay[i] = wideAlphabet[rng.Intn(len(wideAlphabet))]
+	}
+	words := ra.PatternBitsetWords()
+
+	b.Run("BitsetTrack_NFA", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for _, w := range dirty {
+				seen[w] = 0
+			}
+			dirty = ra.OverlappingBitsetTrack(hay, seen, dirty[:0])
+		}
+	})
+	b.Run("BitsetVecTrack", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for _, w := range dirty {
+				seen[w] = 0
+			}
+			dirty = ra.OverlappingBitsetVecTrack(hay, seen, dirty[:0])
+		}
+	})
+	b.Run("BitsetVecTrackBuf", func(b *testing.B) {
+		seen := make([]uint64, words)
+		var dirty, scratch []int32
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for _, w := range dirty {
+				seen[w] = 0
+			}
+			dirty, scratch = ra.OverlappingBitsetVecTrackBuf(hay, seen, dirty[:0], scratch)
+		}
+	})
+}
+
+// genWidePatterns builds n unique patterns (length 2..9) over wideAlphabet.
+func genWidePatterns(n int, seed int64) [][]rune {
+	rng := rand.New(rand.NewSource(seed))
+	pats := make([][]rune, 0, n)
+	seen := make(map[string]bool, n)
+	for len(pats) < n {
+		l := rng.Intn(8) + 2
+		p := make([]rune, l)
+		for k := range p {
+			p[k] = wideAlphabet[rng.Intn(len(wideAlphabet))]
+		}
+		s := string(p)
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		pats = append(pats, p)
+	}
+	return pats
+}
+
+// BenchmarkNewRune_Huge probes construction scaling at the real production
+// size (10k–100k patterns). Superlinear ns/op growth would mean findBase
+// fragmentation has become the dominant cost at scale.
+func BenchmarkNewRune_Huge(b *testing.B) {
+	for _, n := range []int{10000, 30000, 100000} {
+		pats := genWidePatterns(n, 42)
+		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				ra, _ := NewRune(pats)
+				_ = ra
+			}
+		})
+	}
+}
+
+func BenchmarkNewRune_Small(b *testing.B) {
+	// 10 Thai patterns — the documented per-campaign machine size.
+	pats := runesOf(
+		"สวัสดี", "ครับ", "ค่ะ", "ขอบคุณ", "ประเทศไทย",
+		"กรุงเทพ", "มหานคร", "ภาษาไทย", "คนไทย", "อาหาร",
+	)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		ra, _ := NewRune(pats)
+		_ = ra
+	}
+}
+
+func BenchmarkNewRune_Large(b *testing.B) {
+	for _, n := range []int{3000, 5000} {
+		pats := genWidePatterns(n, 42)
+		b.Run(fmt.Sprintf("%dPatterns", n), func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				ra, _ := NewRune(pats)
+				_ = ra
+			}
+		})
+	}
+}
+
+func BenchmarkRuneBuildVec(b *testing.B) {
+	ra, _ := NewRune(genWidePatterns(3000, 42))
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		ra.daVec = nil
+		ra.BuildVec()
+	}
+	_ = ra.VecMemBytes()
+}
+
+// ---------------------------------------------------------------------------
+// Test: free-list construction invariant (layout-independent)
+// ---------------------------------------------------------------------------
+
+// TestRuneLargeBuild_ScanInvariant guards the double-array construction against
+// any packing bug: it asserts (1) every pattern matches within itself, (2) on
+// random haystacks OverlappingPatternSet and FindOverlappingAll agree, and
+// (3) each reported match span equals its pattern. All checks are independent
+// of the internal DA slot layout.
+func TestRuneLargeBuild_ScanInvariant(t *testing.T) {
+	pats := genWidePatterns(2000, 7)
+	ra, err := NewRune(pats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make([]bool, ra.PatternCount())
+
+	// (1) Positive coverage: every pattern must match within itself.
+	for i, p := range pats {
+		for j := range seen {
+			seen[j] = false
+		}
+		ra.OverlappingPatternSet(p, seen)
+		if !seen[i] {
+			t.Fatalf("pattern %d (%q) not found in itself", i, string(p))
+		}
+	}
+
+	// (2)+(3) Random haystacks: PatternSet vs Find agree, spans are correct.
+	rng := rand.New(rand.NewSource(99))
+	findSet := make([]bool, ra.PatternCount())
+	for iter := 0; iter < 200; iter++ {
+		hl := rng.Intn(60) + 1
+		hay := make([]rune, hl)
+		for k := range hay {
+			hay[k] = wideAlphabet[rng.Intn(len(wideAlphabet))]
+		}
+
+		for j := range seen {
+			seen[j] = false
+		}
+		ra.OverlappingPatternSet(hay, seen)
+
+		for j := range findSet {
+			findSet[j] = false
+		}
+		for _, m := range ra.FindOverlappingAll(hay) {
+			if string(hay[m.Start():m.End()]) != string(ra.patterns[m.PatternID()]) {
+				t.Fatalf("iter %d: match pid=%d span=%q != pattern=%q",
+					iter, m.PatternID(),
+					string(hay[m.Start():m.End()]), string(ra.patterns[m.PatternID()]))
+			}
+			findSet[m.PatternID()] = true
+		}
+
+		for j := range seen {
+			if seen[j] != findSet[j] {
+				t.Fatalf("iter %d: pattern %d PatternSet=%v Find=%v",
+					iter, j, seen[j], findSet[j])
+			}
+		}
+	}
 }
