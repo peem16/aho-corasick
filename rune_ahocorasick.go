@@ -1,7 +1,6 @@
 package ahocorasick
 
 import (
-	"sort"
 	"unsafe"
 )
 
@@ -95,10 +94,18 @@ type RuneAhoCorasick struct {
 	dfaNext []int32
 
 	// Interleaved DA (optional, built by BuildVec).
-	// Layout: [base0, check0, fail0, outOff0, base1, check1, fail1, outOff1, ...]
+	// Layout: [base0, check0, fail0, outVecOff0, base1, check1, fail1, ...]
 	// 16 bytes per slot. Loading check[t] prefetches base[t] in the same
 	// cache line → saves one L3 miss per rune on the next iteration.
+	// The 4th field is an offset into outVec, NOT into outputs (-1 = none).
 	daVec []int32
+
+	// Length-prefixed output lists for the vec scan paths (built by BuildVec):
+	// outVec[off] = count, followed by count pattern IDs (same order as the
+	// slot's outputs[] region). The drain reads count and pids from one
+	// stream instead of touching the separate outLen array (a cold cache
+	// line per matching state on large machines).
+	outVec []PatternID
 }
 
 // NewRune builds a rune-based Aho-Corasick automaton from rune patterns.
@@ -335,39 +342,72 @@ func (ra *RuneAhoCorasick) OverlappingPatternSetDFATrack(haystack []rune, seen [
 // Vectorized scan: interleaved DA (AoS) + alpha pre-conversion
 // ---------------------------------------------------------------------------
 
-// BuildVec creates the interleaved DA layout used by OverlappingPatternSetVecTrack.
-// Layout: 4 × int32 per slot = 16 bytes [base, check, fail, outputOff].
+// BuildVec creates the interleaved DA layout used by the vec scan paths
+// (OverlappingPatternSetVecTrack, OverlappingBitsetVecTrack/Buf, and the
+// FindOverlappingAllAppend fast path).
+// Layout: 4 × int32 per slot = 16 bytes [base, check, fail, outVecOff].
 // When the CPU loads check[t], base[t] is in the same cache line.
 // On the next iteration (state = t), base[t] is already in L1 — one fewer
 // L3 miss per rune compared to the SoA layout.
 //
-// Memory: len(daBase) × 16 bytes. For 943K slots → 14.4 MB.
+// It also builds outVec, a length-prefixed copy of each output slot's pattern
+// IDs ([count, pid...]); the 4th daVec field points into it (-1 = no output),
+// so vec drains read count and pids from a single stream instead of loading
+// the separate outLen array.
+//
+// Memory: len(daBase) × 16 bytes for daVec, plus 4 bytes per output entry
+// + 4 bytes per output-bearing slot for outVec. For 943K slots → ~14.4 MB
+// of daVec.
 func (ra *RuneAhoCorasick) BuildVec() {
 	n := len(ra.daBase)
 	v := make([]int32, n*4)
-	// Slice all four sources to [:n] so the compiler proves equal length and
-	// hoists their bounds checks out of the loop. daCheck/daFail/outputOff are
-	// all built with len == len(daBase), so these reslices never panic.
+	// Slice all five sources to [:n] so the compiler proves equal length and
+	// hoists their bounds checks out of the loop. daCheck/daFail/outputOff/
+	// outLen are all built with len == len(daBase), so these never panic.
 	base := ra.daBase[:n]
 	check := ra.daCheck[:n]
 	fail := ra.daFail[:n]
 	outOff := ra.outputOff[:n]
+	outLen := ra.outLen[:n]
+
+	outVecSize := 0
+	for i := 0; i < n; i++ {
+		if outOff[i] >= 0 {
+			outVecSize += 1 + int(outLen[i])
+		}
+	}
+	outVec := make([]PatternID, 0, outVecSize)
+
 	for i := 0; i < n; i++ {
 		j := i * 4
 		v[j] = base[i]
 		v[j+1] = check[i]
 		v[j+2] = fail[i]
-		v[j+3] = outOff[i]
+		oo := outOff[i]
+		if oo >= 0 {
+			ol := outLen[i]
+			v[j+3] = int32(len(outVec))
+			outVec = append(outVec, PatternID(ol))
+			outVec = append(outVec, ra.outputs[oo:oo+ol]...)
+		} else {
+			v[j+3] = -1
+		}
 	}
+	// outVec is published before daVec: every outVec reader is gated on
+	// daVec != nil, so a racy reader that has not yet observed daVec also
+	// has no path to outVec. (BuildVec is still a mutator — call it before
+	// sharing the machine across goroutines, like BuildDFA.)
+	ra.outVec = outVec
 	ra.daVec = v
 }
 
-// VecMemBytes returns the interleaved DA table size in bytes, or 0 if not built.
+// VecMemBytes returns the size in bytes of the tables built by BuildVec
+// (interleaved DA + length-prefixed outputs), or 0 if not built.
 func (ra *RuneAhoCorasick) VecMemBytes() int64 {
 	if ra == nil || ra.daVec == nil {
 		return 0
 	}
-	return int64(len(ra.daVec)) * 4
+	return int64(len(ra.daVec))*4 + int64(len(ra.outVec))*4
 }
 
 // OverlappingPatternSetVecTrack uses the interleaved DA layout for
@@ -425,8 +465,7 @@ func (ra *RuneAhoCorasick) OverlappingPatternSetVecTrack(haystack []rune, seen [
 	}
 
 	// ---- Phase 2: Interleaved DA scan ----
-	outputs := ra.outputs
-	outLen := ra.outLen
+	outVec := ra.outVec
 	daVec := ra.daVec
 	vecPtr := unsafe.Pointer(unsafe.SliceData(daVec))
 
@@ -456,18 +495,15 @@ func (ra *RuneAhoCorasick) OverlappingPatternSetVecTrack(haystack []rune, seen [
 			state = *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+8))
 		}
 
-		// Check output flag (bit 31 of base).
+		// Check output flag (bit 31 of base). The flag guarantees the slot
+		// has an outVec entry (offset >= 0), so no inner offset check.
 		if *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) < 0 {
-			// outputOff = daVec[state*4 + 3]
+			// outVecOff = daVec[state*4 + 3]; outVec[ooff] = count, pids follow.
 			ooff := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+12))
-			if ooff >= 0 {
-				ol := outLen[state]
-				for j := int32(0); j < ol; j++ {
-					pid := outputs[ooff+j]
-					if !seen[pid] {
-						seen[pid] = true
-						dirty = append(dirty, pid)
-					}
+			for _, pid := range outVec[ooff+1 : ooff+1+int32(outVec[ooff])] {
+				if !seen[pid] {
+					seen[pid] = true
+					dirty = append(dirty, pid)
 				}
 			}
 		}
@@ -681,8 +717,7 @@ func (ra *RuneAhoCorasick) bitsetVecScan(alphas []int32, seen []uint64, dirty []
 		return dirty
 	}
 
-	outputs := ra.outputs
-	outLen := ra.outLen
+	outVec := ra.outVec
 	daVec := ra.daVec
 	vecPtr := unsafe.Pointer(unsafe.SliceData(daVec))
 
@@ -707,13 +742,12 @@ func (ra *RuneAhoCorasick) bitsetVecScan(alphas []int32, seen []uint64, dirty []
 			state = *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+8))
 		}
 
-		// base<0 (output flag) guarantees outputOff>=0, so the old inner
-		// `if ooff >= 0` was dead and has been removed.
+		// base<0 (output flag) guarantees an outVec entry (offset >= 0).
+		// outVec[ooff] = count, pids follow: count and pids come from one
+		// stream, with no separate outLen load per matching state.
 		if *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) < 0 {
 			ooff := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+12))
-			ol := outLen[state]
-			for j := int32(0); j < ol; j++ {
-				pid := outputs[ooff+j]
+			for _, pid := range outVec[ooff+1 : ooff+1+int32(outVec[ooff])] {
 				wi := int32(pid / 64)
 				bit := uint64(1) << (pid % 64)
 				if seen[wi]&bit == 0 {
@@ -754,7 +788,11 @@ func buildRuneNFA(patterns [][]rune) *RuneAhoCorasick {
 	states[0].outputIdx = -1 // dead state
 	states[1].outputIdx = -1 // start state
 
-	tmpOutputs := make([][]PatternID, 2)
+	// Terminal trie node of each pattern. Full output sets are NOT propagated
+	// through per-state slices during the failure-link BFS (that append-growth
+	// churn dominated construction at 100k patterns); Phase 3 materializes
+	// them directly into the flat ra.outputs array from these.
+	termNode := make([]stateID, len(patterns))
 
 	// Slab allocator for 1-entry transition slots.
 	slabSize := 2
@@ -767,7 +805,7 @@ func buildRuneNFA(patterns [][]rune) *RuneAhoCorasick {
 	// ---- Phase 1: build trie ----
 	for pid, pat := range patterns {
 		if len(pat) == 0 {
-			tmpOutputs[startStateID] = append(tmpOutputs[startStateID], PatternID(pid))
+			termNode[pid] = startStateID
 			continue
 		}
 		cur := startStateID
@@ -782,13 +820,12 @@ func buildRuneNFA(patterns [][]rune) *RuneAhoCorasick {
 				} else {
 					tmpTrans = append(tmpTrans, nil)
 				}
-				tmpOutputs = append(tmpOutputs, nil)
 				tmpTrans[cur] = runeAddTransTmp(tmpTrans[cur], r, newID)
 				next = newID
 			}
 			cur = next
 		}
-		tmpOutputs[cur] = append(tmpOutputs[cur], PatternID(pid))
+		termNode[pid] = cur
 	}
 
 	// ---- Phase 2: failure links (BFS from depth 1) ----
@@ -798,9 +835,6 @@ func buildRuneNFA(patterns [][]rune) *RuneAhoCorasick {
 		child := tr.next
 		states[child].fail = startStateID
 		queue = append(queue, child)
-		if len(tmpOutputs[startStateID]) > 0 {
-			tmpOutputs[child] = append(tmpOutputs[child], tmpOutputs[startStateID]...)
-		}
 	}
 
 	for qi := 0; qi < len(queue); qi++ {
@@ -809,62 +843,125 @@ func buildRuneNFA(patterns [][]rune) *RuneAhoCorasick {
 			r := tr.r
 			child := tr.next
 
+			// Walk the fail chain with one lookup per node (root included);
+			// the found node is not looked up a second time.
 			fail := states[cur].fail
-			for fail != startStateID {
-				if _, ok := runeLookupTmp(tmpTrans[fail], r); ok {
+			var next stateID
+			var ok bool
+			for {
+				next, ok = runeLookupTmp(tmpTrans[fail], r)
+				if ok || fail == startStateID {
 					break
 				}
 				fail = states[fail].fail
 			}
-			if next, ok := runeLookupTmp(tmpTrans[fail], r); ok && next != child {
+			if ok && next != child {
 				states[child].fail = next
 			} else {
 				states[child].fail = startStateID
-			}
-
-			failState := states[child].fail
-			if len(tmpOutputs[failState]) > 0 {
-				tmpOutputs[child] = append(tmpOutputs[child], tmpOutputs[failState]...)
 			}
 
 			queue = append(queue, child)
 		}
 	}
 
-	// ---- Phase 3: flatten outputs (indexed by trie state) ----
+	// ---- Phase 3: materialize full output sets into the flat array ----
+	// full(s) = own(s) ∪ full(fail(s)), where own(s) are the patterns whose
+	// terminal node is s. Sizes first (fullLen), then each state's region of
+	// ra.outputs is filled as a 2-way merge of its own list with the fail
+	// state's already-materialized region. A pid never repeats along a fail
+	// chain and both merge inputs are sorted ascending, so every region comes
+	// out sorted — the same layout (and match emission order) the old
+	// propagate-then-sort code produced, without its per-state slice churn.
 	numTrieStates := len(states)
-	trieOutOff := make([]int32, numTrieStates)
-	trieOutLen := make([]int32, numTrieStates)
-	{
-		total := 0
-		for _, outs := range tmpOutputs {
-			total += len(outs)
-		}
-		ra.outputs = make([]PatternID, 0, total)
 
+	// Own outputs via counting sort over termNode: stable and pid-ascending
+	// within each bucket, i.e. every own list is already sorted.
+	ownCount := make([]int32, numTrieStates)
+	for _, tn := range termNode {
+		ownCount[tn]++
+	}
+	ownOff := make([]int32, numTrieStates+1)
+	{
+		var acc int32
 		for s := 0; s < numTrieStates; s++ {
-			outs := tmpOutputs[s]
-			if len(outs) == 0 {
-				trieOutOff[s] = -1
-				continue
-			}
-			if len(outs) <= 8 {
-				for i := 1; i < len(outs); i++ {
-					key := outs[i]
-					j := i - 1
-					for j >= 0 && outs[j] > key {
-						outs[j+1] = outs[j]
-						j--
-					}
-					outs[j+1] = key
-				}
-			} else {
-				sort.Slice(outs, func(i, j int) bool { return outs[i] < outs[j] })
-			}
-			trieOutOff[s] = int32(len(ra.outputs))
-			trieOutLen[s] = int32(len(outs))
-			ra.outputs = append(ra.outputs, outs...)
+			ownOff[s] = acc
+			acc += ownCount[s]
 		}
+		ownOff[numTrieStates] = acc
+	}
+	ownPids := make([]PatternID, len(patterns))
+	{
+		cursor := make([]int32, numTrieStates)
+		copy(cursor, ownOff[:numTrieStates])
+		for pid, tn := range termNode {
+			ownPids[cursor[tn]] = PatternID(pid)
+			cursor[tn]++
+		}
+	}
+
+	// Full set sizes in BFS order: a fail link always points to a strictly
+	// shallower state, so fullLen[fail] is final before fullLen[s] is read.
+	// State indices follow trie insertion order, NOT depth — iterating by
+	// index here would read unfinished values.
+	fullLen := make([]int32, numTrieStates)
+	fullLen[startStateID] = ownCount[startStateID]
+	for _, s := range queue {
+		fullLen[s] = ownCount[s] + fullLen[states[s].fail]
+	}
+
+	// Offsets assigned in state-index order: reproduces the exact flat
+	// layout of the old append-in-index-order flatten.
+	trieOutOff := make([]int32, numTrieStates)
+	trieOutLen := fullLen
+	total := 0
+	for s := 0; s < numTrieStates; s++ {
+		if fullLen[s] == 0 {
+			trieOutOff[s] = -1
+			continue
+		}
+		trieOutOff[s] = int32(total)
+		total += int(fullLen[s])
+	}
+	ra.outputs = make([]PatternID, total)
+
+	// Materialize in BFS order (fail's region is always filled first).
+	// Regions are disjoint slices of ra.outputs, so reading the fail
+	// state's region while writing s's is safe.
+	fillOutputs := func(s stateID) {
+		fl := fullLen[s]
+		if fl == 0 {
+			return
+		}
+		dst := ra.outputs[trieOutOff[s] : trieOutOff[s]+fl]
+		own := ownPids[ownOff[s]:ownOff[s+1]]
+		f := states[s].fail
+		if fullLen[f] == 0 {
+			copy(dst, own)
+			return
+		}
+		inh := ra.outputs[trieOutOff[f] : trieOutOff[f]+fullLen[f]]
+		if len(own) == 0 {
+			copy(dst, inh)
+			return
+		}
+		i, j, k := 0, 0, 0
+		for i < len(own) && j < len(inh) {
+			if own[i] < inh[j] {
+				dst[k] = own[i]
+				i++
+			} else {
+				dst[k] = inh[j]
+				j++
+			}
+			k++
+		}
+		k += copy(dst[k:], own[i:])
+		copy(dst[k:], inh[j:])
+	}
+	fillOutputs(startStateID)
+	for _, s := range queue {
+		fillOutputs(s)
 	}
 
 	// ---- Phase 4: build compact rune alphabet ----
@@ -1053,15 +1150,21 @@ func (ra *RuneAhoCorasick) buildDoubleArray(
 		alpha    int32
 		trieState stateID
 	}
+	// One scratch buffer serves every childrenOf call: the returned slice is
+	// fully consumed within a single BFS iteration below (findBase + child
+	// placement) and never retained, so reuse is safe and saves one heap
+	// allocation per trie state (~hundreds of thousands at 100k patterns).
+	childBuf := make([]alphaChild, 0, 64)
 	childrenOf := func(trieState stateID) []alphaChild {
 		trans := tmpTrans[trieState]
-		children := make([]alphaChild, 0, len(trans))
+		children := childBuf[:0]
 		for _, tr := range trans {
 			a := runeToAlpha(tr.r)
 			if a > 0 {
 				children = append(children, alphaChild{alpha: a, trieState: tr.next})
 			}
 		}
+		childBuf = children
 		return children
 	}
 
@@ -1536,6 +1639,13 @@ func (ra *RuneAhoCorasick) FindOverlappingAllAppend(dst []RuneMatch, haystack []
 		return out
 	}
 
+	// Interleaved-DA fast path when BuildVec has been called: same prefetch
+	// win as the bitset vec scan (check[t] pulls base[t] into L1), which
+	// matters on large machines whose DA tables exceed cache.
+	if ra.daVec != nil {
+		return ra.findOverlappingAllVec(out, haystack)
+	}
+
 	daBase := ra.daBase
 	daCheck := ra.daCheck
 	daFail := ra.daFail
@@ -1588,6 +1698,70 @@ func (ra *RuneAhoCorasick) FindOverlappingAllAppend(dst []RuneMatch, haystack []
 			end := pos + 1
 			for i := int32(0); i < ol; i++ {
 				pid := outputs[obase+i]
+				start := end - int(patLens[pid])
+				out = append(out, RuneMatch{id: pid, start: start, end: end})
+			}
+		}
+	}
+
+	return out
+}
+
+// findOverlappingAllVec is the FindOverlappingAllAppend hot loop on the
+// interleaved DA (daVec) with length-prefixed outputs (outVec). Single-phase:
+// runes are converted to alphas inline (no alpha scratch buffer) so the
+// Append API stays zero-alloc on haystacks of any length. The caller has
+// already emitted root (empty-pattern) outputs and checked n > 0.
+func (ra *RuneAhoCorasick) findOverlappingAllVec(out []RuneMatch, haystack []rune) []RuneMatch {
+	n := len(haystack)
+	rootSlot := ra.rootSlot
+	outVec := ra.outVec
+	patLens := ra.patLens
+	runeTableLen := ra.runeTableLen
+	minRune := ra.minRune
+
+	haystackPtr := unsafe.Pointer(unsafe.SliceData(haystack))
+	rtPtr := unsafe.Pointer(unsafe.SliceData(ra.runeTable))
+	vecPtr := unsafe.Pointer(unsafe.SliceData(ra.daVec))
+
+	state := rootSlot
+
+	for pos := 0; pos < n; pos++ {
+		r := *(*rune)(unsafe.Add(haystackPtr, uintptr(pos)*4))
+
+		off := uint32(r) - minRune
+		alpha := int32(0)
+		if off < runeTableLen {
+			alpha = int32(*(*uint16)(unsafe.Add(rtPtr, uintptr(off)*2)))
+		}
+
+		if alpha == 0 {
+			state = rootSlot
+			continue
+		}
+
+		// DA transition with fail chain on the interleaved layout: loading
+		// check[t] (slot t, byte offset +4) brings base[t] into the same
+		// cache line, saving one L3 miss per rune on large machines.
+		for {
+			base := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) & 0x7FFFFFFF
+			t := base + alpha
+			if *(*int32)(unsafe.Add(vecPtr, uintptr(t)*16+4)) == state {
+				state = t
+				break
+			}
+			if state == rootSlot {
+				break
+			}
+			state = *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+8))
+		}
+
+		// base<0 (output flag) guarantees an outVec entry (offset >= 0).
+		// outVec[ooff] = count, pids follow.
+		if *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16)) < 0 {
+			ooff := *(*int32)(unsafe.Add(vecPtr, uintptr(state)*16+12))
+			end := pos + 1
+			for _, pid := range outVec[ooff+1 : ooff+1+int32(outVec[ooff])] {
 				start := end - int(patLens[pid])
 				out = append(out, RuneMatch{id: pid, start: start, end: end})
 			}
